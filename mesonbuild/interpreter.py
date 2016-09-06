@@ -983,10 +983,19 @@ class MesonMain(InterpreterObject):
         return os.path.join(src, sub)
 
     def source_root_method(self, args, kwargs):
-        return self.interpreter.environment.source_dir
+        if self.interpreter.subproject == '':
+            return self.interpreter.environment.source_dir
+        return os.path.join(self.interpreter.environment.source_dir,
+                            self.interpreter.subproject_dir,
+                            self.interpreter.subproject)
 
     def build_root_method(self, args, kwargs):
-        return self.interpreter.environment.build_dir
+        if self.interpreter.subproject == '':
+            return self.interpreter.environment.build_dir
+
+        return os.path.join(self.interpreter.environment.build_dir,
+                            self.interpreter.subproject_dir,
+                            self.interpreter.subproject)
 
     def has_exe_wrapper_method(self, args, kwargs):
         if self.is_cross_build_method(None, None) and \
