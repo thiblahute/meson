@@ -50,7 +50,7 @@ class ExecutableSerialisation():
 
 class TestSerialisation:
     def __init__(self, name, suite, fname, is_cross, exe_wrapper, is_parallel, cmd_args, env,
-                 should_fail, valgrind_args, timeout, workdir, extra_paths):
+                 should_fail, valgrind_args, gdb_args, timeout, workdir, extra_paths):
         self.name = name
         self.suite = suite
         self.fname = fname
@@ -61,6 +61,7 @@ class TestSerialisation:
         self.env = env
         self.should_fail = should_fail
         self.valgrind_args = valgrind_args
+        self.gdb_args = gdb_args
         self.timeout = timeout
         self.workdir = workdir
         self.extra_paths = extra_paths
@@ -443,7 +444,7 @@ class Backend():
                 cmd_args.append(a)
             ts = TestSerialisation(t.get_name(), t.suite, fname, is_cross, exe_wrapper,
                                    t.is_parallel, cmd_args, t.env, t.should_fail, t.valgrind_args,
-                                   t.timeout, t.workdir, extra_paths)
+                                   t.gdb_args, t.timeout, t.workdir, extra_paths)
             arr.append(ts)
         pickle.dump(arr, datafile)
 

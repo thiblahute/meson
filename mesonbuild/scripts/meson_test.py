@@ -102,6 +102,13 @@ def run_with_mono(fname):
 
 def run_single_test(wrap, test):
     global options
+
+    stdout=subprocess.PIPE
+    stderr=subprocess.PIPE if options and options.split else subprocess.STDOUT
+    if is_windows():
+        setsid = None
+    else:
+        setsid = os.setsid
     if test.fname[0].endswith('.jar'):
         cmd = ['java', '-jar'] + test.fname
     elif not test.is_cross and run_with_mono(test.fname[0]):
@@ -125,6 +132,20 @@ def run_single_test(wrap, test):
     else:
         if len(wrap) > 0 and 'valgrind' in wrap[0]:
             cmd = wrap + test.valgrind_args + cmd + test.cmd_args
+        elif len(wrap) > 0 and 'gdb' in wrap[0]:
+            args = test.cmd_args
+            if len(args) > 0:
+                argset = ['-ex', 'set args ' + ' '.join(args)]
+            else:
+                argset = []
+
+            for gdb_arg in test.gdb_args:
+                argset += ['-ex', gdb_arg]
+
+            cmd = wrap + ['--quiet'] + argset + ['-ex', 'run', '-ex', 'quit'] + test.fname
+            stdout=sys.stdout
+            stderr=sys.stderr
+            setsid = None
         else:
             cmd = wrap + cmd + test.cmd_args
         starttime = time.time()
@@ -135,16 +156,8 @@ def run_single_test(wrap, test):
         child_env.update(test.env)
         if len(test.extra_paths) > 0:
             child_env['PATH'] = child_env['PATH'] + ';'.join([''] + test.extra_paths)
-        if is_windows():
-            setsid = None
-        else:
-            setsid = os.setsid
-        p = subprocess.Popen(cmd,
-                             stdout=subprocess.PIPE,
-                             stderr=subprocess.PIPE if options and options.split else subprocess.STDOUT,
-                             env=child_env,
-                             cwd=test.workdir,
-                             preexec_fn=setsid)
+        p = subprocess.Popen(cmd, stdout=stdout, stderr=stderr,
+                             env=child_env, cwd=test.workdir, preexec_fn=setsid)
         timed_out = False
         try:
             (stdo, stde) = p.communicate(timeout=test.timeout)
@@ -160,7 +173,8 @@ def run_single_test(wrap, test):
             (stdo, stde) = p.communicate()
         endtime = time.time()
         duration = endtime - starttime
-        stdo = decode(stdo)
+        if stdo is not None:
+            stdo = decode(stdo)
         if stde:
             stde = decode(stde)
         if timed_out:

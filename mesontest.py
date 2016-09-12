@@ -45,17 +45,15 @@ def gdbrun(test, options):
     else:
         argset = []
 
-    for gdb_arg in options.gdb_args:
-        argset += ['-ex', gdb_arg]
+    test.gdb_args += options.gdb_args
 
-    cmd = ['gdb', '--quiet'] + argset + ['-ex', 'run', '-ex', 'quit'] + exe
-    # FIXME a ton of stuff. run_single_test grabs stdout & co,
-    # which we do not want to do when running under gdb.
-    p = subprocess.Popen(cmd,
-                         env=child_env,
-                         cwd=test.workdir,
-                         )
-    p.communicate()
+    res = meson_test.run_single_test(['gdb'], test)
+    if (res.returncode == 0 and res.should_fail) or \
+        (res.returncode != 0 and not res.should_fail):
+        print(res.stdo)
+        print(res.stde)
+        raise RuntimeError('Test failed.')
+
 
 def run(args):
     datafile = 'meson-private/meson_test_setup.dat'
