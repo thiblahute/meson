@@ -27,11 +27,13 @@ parser.add_argument('--wrapper', default='', dest='wrapper',
                     help='Exe wrapper (such as Valgrind) to use')
 parser.add_argument('--gdb', default=False, dest='gdb', action='store_true',
                     help='Run test under gdb.')
+parser.add_argument('--gdb-arg', default=[], dest='gdb_args', action='append',
+                    help='Pass extra arguments to gdb (not including "-ex").')
 parser.add_argument('--list', default=False, dest='list', action='store_true',
                     help='List available tests.')
 parser.add_argument('tests', nargs='*')
 
-def gdbrun(test):
+def gdbrun(test, options):
     child_env = os.environ.copy()
     child_env.update(test.env)
     # On success will exit cleanly. On failure gdb will ask user
@@ -42,6 +44,10 @@ def gdbrun(test):
         argset = ['-ex', 'set args ' + ' '.join(args)]
     else:
         argset = []
+
+    for gdb_arg in options.gdb_args:
+        argset += ['-ex', gdb_arg]
+
     cmd = ['gdb', '--quiet'] + argset + ['-ex', 'run', '-ex', 'quit'] + exe
     # FIXME a ton of stuff. run_single_test grabs stdout & co,
     # which we do not want to do when running under gdb.
@@ -71,7 +77,7 @@ def run(args):
             for i in range(options.repeat):
                 print('Running: %s %d/%d' % (t.name, i+1, options.repeat))
                 if options.gdb:
-                    gdbrun(t)
+                    gdbrun(t, options)
                 else:
                     res = meson_test.run_single_test(wrap, t)
                     if (res.returncode == 0 and res.should_fail) or \
