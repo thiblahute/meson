@@ -15,7 +15,8 @@
 # limitations under the License.
 
 import mesonbuild
-import sys, os, subprocess, time, datetime, pickle, multiprocessing, json
+from .. import mesonlib
+import sys, os, subprocess, time, datetime, pickle, multiprocessing, json, re
 import concurrent.futures as conc
 import argparse
 import platform
@@ -128,6 +129,11 @@ def run_single_test(wrap, test):
             cmd = wrap + cmd + test.cmd_args
         starttime = time.time()
         child_env = os.environ.copy()
+        regex = re.compile(r'[^\\]?@([-a-zA-Z0-9_]+)@')
+        for var, value in test.env.items():
+            # Update the test env itself so that it matches in the logs.
+            test.env[var] = mesonlib.do_replacement(regex, test.env[var],
+                                                    child_env)
         child_env.update(test.env)
         if len(test.extra_paths) > 0:
             child_env['PATH'] = child_env['PATH'] + ';'.join([''] + test.extra_paths)
