@@ -588,7 +588,8 @@ class RunTargetHolder(InterpreterObject):
         self.held_object = build.RunTarget(name, command, args, dependencies, subdir)
 
 class Test(InterpreterObject):
-    def __init__(self, name, suite, exe, is_parallel, cmd_args, env, should_fail, valgrind_args, timeout, workdir):
+    def __init__(self, name, suite, exe, is_parallel, cmd_args, env, should_fail, valgrind_args,
+                 gdb_args, timeout, workdir):
         InterpreterObject.__init__(self)
         self.name = name
         self.suite = suite
@@ -598,6 +599,7 @@ class Test(InterpreterObject):
         self.env = env
         self.should_fail = should_fail
         self.valgrind_args = valgrind_args
+        self.gdb_args = gdb_args
         self.timeout = timeout
         self.workdir = workdir
 
@@ -2049,9 +2051,12 @@ class Interpreter():
         valgrind_args = kwargs.get('valgrind_args', [])
         if not isinstance(valgrind_args, list):
             valgrind_args = [valgrind_args]
-        for a in valgrind_args:
-            if not isinstance(a, str):
-                raise InterpreterException('Valgrind_arg not a string.')
+        check_stringlist(valgrind_args, 'Valgrind_arg not a string.')
+        gdb_args = kwargs.get('gdb_args', [])
+        if not isinstance(gdb_args, list):
+            gdb_args = [gdb_args]
+        check_stringlist(gdb_args, 'Gdb arg not a string.')
+
         should_fail = kwargs.get('should_fail', False)
         if not isinstance(should_fail, bool):
             raise InterpreterException('Keyword argument should_fail must be a boolean.')
@@ -2074,7 +2079,8 @@ class Interpreter():
                     s = '.' + s
                 newsuite.append(self.subproject.replace(' ', '_').replace('.', '_') + s)
             suite = newsuite
-        t = Test(args[0], suite, args[1].held_object, par, cmd_args, env, should_fail, valgrind_args, timeout, workdir)
+        t = Test(args[0], suite, args[1].held_object, par, cmd_args, env, should_fail,
+                 valgrind_args, gdb_args, timeout, workdir)
         if is_base_test:
             self.build.tests.append(t)
             mlog.debug('Adding test "', mlog.bold(args[0]), '".', sep='')
