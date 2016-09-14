@@ -201,8 +201,8 @@ int dummy;
         builddir = self.environment.get_build_dir()
         try:
             jsondb = subprocess.check_output([ninja_exe, '-t', 'compdb', 'c_COMPILER', 'cpp_COMPILER'], cwd=builddir)
-        except Exception:
-                raise MesonException('Could not create compilation database.')
+        except Exception as e:
+            raise MesonException('Could not create compilation database. (%s)' % vars(e))
         with open(os.path.join(builddir, 'compile_commands.json'), 'wb') as f:
             f.write(jsondb)
 
