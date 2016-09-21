@@ -16,7 +16,7 @@
 
 # A tool to run tests in many different ways.
 
-import subprocess, sys, os, argparse
+import subprocess, sys, os, argparse, re
 import pickle, statistics, json
 from mesonbuild.scripts import meson_test
 
@@ -71,7 +71,7 @@ def run(args):
             print(i.name)
         return 0
     for t in tests:
-        if t.name in options.tests:
+        if [m for m in options.tests if re.match(m, t.name)]:
             for i in range(options.repeat):
                 print('Running: %s %d/%d' % (t.name, i+1, options.repeat))
                 if options.gdb:
