@@ -56,8 +56,12 @@ def gdbrun(test, options):
 
 
 def run(args):
-    datafile = 'meson-private/meson_test_setup.dat'
     options = parser.parse_args(args)
+    if options.tests and os.path.exists(options.tests[0]):
+        datafile = os.path.join(options.tests[0], 'meson-private/meson_test_setup.dat')
+        options.tests = options.tests[1:]
+    else:
+        datafile = 'meson-private/meson_test_setup.dat'
     if options.wrapper != '':
         wrap = options.wrapper.split(' ')
     else:
