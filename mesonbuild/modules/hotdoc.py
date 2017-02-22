@@ -2,6 +2,8 @@ import os
 import sys
 import subprocess
 
+from mesonbuild import mesonlib
+from mesonbuild import interpreter
 from mesonbuild import mlog, build
 from mesonbuild.coredata import MesonException
 from . import ModuleReturnValue
@@ -100,7 +102,7 @@ class HotDocModule(ExtensionModule):
         fullname = args[0] + '-doc'
         name = args[0]
 
-        def setup_extension_path(paths):
+        def setup_extension_paths(paths):
             if not isinstance(paths, list):
                 paths = [paths]
             for path in paths:
@@ -116,11 +118,12 @@ class HotDocModule(ExtensionModule):
         extra_extension_paths = cmd_builder.get_value([list, str],
                                                       'extra_extensions_paths',
                                                       default="",
-                                                      value_processor=setup_extension_path)
+                                                      value_processor=setup_extension_paths)
 
-        cmd = [extra_extension_paths[0]] + self.hotdoc.get_command() + [
-            'run', '--project-name', fullname, "--disable-incremental-build"]
+        cmd = self.hotdoc.get_command() + [
+            'conf', '--project-name', fullname, "--disable-incremental-build"]
         cmd_builder.cmd = cmd
+
 
         if "output" in cmd_builder.kwargs:
             raise MesonException("'output' is not a valid argument for hotdoc targets")
@@ -170,17 +173,29 @@ class HotDocModule(ExtensionModule):
 
         cmd_builder.add_extra_args()
 
+        jfilename = fullname + '.json'
+        jfile = os.path.join(state.subdir, jfilename)
+        built_json = mesonlib.File.from_built_file(state.subdir, jfilename)
+        cmd = cmd_builder.cmd + ['--output-conf-file', jfile ]
+        print("Running %s" % cmd)
+        subprocess.check_call(cmd)
+
         command = [sys.executable, state.environment.get_build_command()]
 
-        res = [build.RunTarget(fullname, command[0], [command[1], "--internal",
-                                                      "hotdoc", "build"] + cmd_builder.cmd,
-                               dependencies, state.subdir)]
+        res = [build.RunTarget(fullname, command[0], [
+            command[1], "--internal", "hotdoc"] +
+            self.hotdoc.get_command() + ['run', '--conf-file', jfilename] +
+            ['--extra-extension-path=' + p for p in extra_extension_paths if p] +
+            ['--subdir', state.subdir],
+            dependencies, state.subdir)]
         if install == True:
-            res.append(build.RunScript(command, ["--internal", "hotdoc", "install",
-                                                 os.path.join(state.subdir, fullname), name] +
-                                       cmd_builder.cmd))
-        return ModuleReturnValue(None, res)
-
+            res.append(build.RunScript(command, [
+                "--internal", "hotdoc",
+                "--install", os.path.join(fullname, 'html'),
+                '--subdir', state.subdir,
+                '--name', name] + self.hotdoc.get_command() +
+                ['run', '--conf-file', jfilename]))
+        return ModuleReturnValue(interpreter.GeneratedObjectsHolder(built_json), res)
 
 def initialize():
     return HotDocModule()

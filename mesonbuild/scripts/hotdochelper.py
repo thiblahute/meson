@@ -4,28 +4,36 @@ import subprocess
 
 from . import destdir_join
 
-def run(argv):
-    if argv[0] == "install":
-        os.environ['HOTDOC_EXTENSION_PATH'] = argv[3]
-        args = argv[4:]
-    else:
-        os.environ['HOTDOC_EXTENSION_PATH'] = argv[1]
-        args = argv[2:]
+import argparse
 
-    builddir = os.environ['MESON_BUILD_ROOT']
-    res = subprocess.call(args, cwd=builddir)
+parser = argparse.ArgumentParser()
+parser.add_argument('--install')
+parser.add_argument('--extra-extension-path', action="append", default=[])
+parser.add_argument('--name')
+parser.add_argument('--subdir')
+parser.add_argument('--project-version')
+
+
+def run(argv):
+    options, args = parser.parse_known_args(argv)
+    subenv = os.environ.copy()
+
+    for ext_path in options.extra_extension_path:
+        os.environ['PYTHONPATH'] = os.environ.get('PYTHONPATH', '') + ':' + ext_path
+
+    builddir = os.path.join(os.environ['MESON_BUILD_ROOT'], options.subdir)
+    print("===> Running(%s) %s" % (builddir, ' '.join(args)))
+    res = subprocess.call(args, cwd=builddir, env=subenv)
 
     if res != 0:
         exit(res)
 
-    if argv[0] == "install":
-        name = argv[2]
-
-        source_dir = os.path.join(builddir, argv[1], "html")
+    if options.install:
+        source_dir = os.path.join(builddir, options.install)
         destdir = os.environ.get('DESTDIR', '')
         installdir = destdir_join(destdir,
                                   os.path.join(os.environ['MESON_INSTALL_PREFIX'],
-                                  'share/doc/', name, "html"))
+                                  'share/doc/', options.name, "html"))
 
         shutil.rmtree(installdir, ignore_errors=True)
         shutil.copytree(source_dir, installdir)
