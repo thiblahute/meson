@@ -1917,6 +1917,8 @@ class LinuxlikeTests(BasePlatformTests):
              'disabled', 'disabled', 'enabled', 'enabled', 'enabled'),
             (['-Dsubcomponent=disabled'], 'enabled', 'enabled', 'disabled', 'disabled', 'disabled'),
             (['-Dsubsubcomponent=disabled'], 'enabled', 'enabled', 'disabled', 'enabled', 'disabled'),
+            (['--components-default-value=disabled'], 'disabled', 'disabled', 'disabled', 'disabled', 'disabled'),
+            (['--components-default-value=disabled', '-Dhello1=enabled'], 'enabled', 'disabled', 'disabled', 'disabled', 'disabled'),
         ]
 
         for (options, ehello1, ehello2, ehello3, esubhello, esubsubhello) in test_data:
