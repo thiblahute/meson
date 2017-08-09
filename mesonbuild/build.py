@@ -297,11 +297,20 @@ a hard error in the future.''' % name)
         self.build_always = False
         self.option_overrides = {}
         self.components = set()
+        self._should_build = None
 
     def should_build(self):
+        if self._should_build is not None:
+            return self._should_build
+
         for component in self.components:
             if not component.func_enabled():
+                mlog.debug("Not building %s because of %s" % (
+                    self.name, component.name))
+                self._should_build = False
                 return False
+        self._should_build = True
+
         return True
 
     def get_basename(self):
@@ -379,6 +388,23 @@ class BuildTarget(Target):
         self.process_compilers()
         self.validate_sources()
         self.validate_cross_install(environment)
+
+    def should_build(self):
+        if self._should_build is not None:
+            return self._should_build
+
+        if not super().should_build():
+            return False
+
+        for link_target in self.link_targets:
+            if not link_target.should_build():
+                mlog.debug("Not building %s because of %s" % (
+                    self.name, link_target.name))
+                self._should_build = False
+                return False
+
+        self._should_build = True
+        return True
 
     def __lt__(self, other):
         return self.get_id() < other.get_id()
