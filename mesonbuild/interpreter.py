@@ -1755,8 +1755,14 @@ class Interpreter(InterpreterBase):
         if not isinstance(incs, list):
             incs = [incs]
         libs = kwargs.get('link_with', [])
+        found = True
         if not isinstance(libs, list):
             libs = [libs]
+        libs = mesonlib.unholder_array(libs)
+        for lib in libs:
+            if not lib.should_build():
+                found = False
+                break
         sources = kwargs.get('sources', [])
         if not isinstance(sources, list):
             sources = [sources]
@@ -1779,9 +1785,10 @@ class Interpreter(InterpreterBase):
                                               mesonlib.unholder_array(incs),
                                               compile_args,
                                               link_args,
-                                              mesonlib.unholder_array(libs),
+                                              libs,
                                               mesonlib.unholder_array(sources),
-                                              final_deps)
+                                              final_deps,
+                                              found=found)
         return DependencyHolder(dep)
 
     @noKwargs
@@ -2279,8 +2286,11 @@ class Interpreter(InterpreterBase):
                     try:
                         # Never add fallback deps to self.coredata.deps
                         fallback_dep = subproject.get_variable_method([varname], {})
-                        _components_add_dependency(components, fallback_dep)
-                        return fallback_dep
+                        if fallback_dep.held_object.is_found:
+                            _components_add_dependency(components, fallback_dep)
+                            return fallback_dep
+                        mlog.log("Fallback dependency %s exists but is not enabled"
+                                 % (varname))
                     except KeyError:
                         pass
 
@@ -2616,6 +2626,7 @@ class Interpreter(InterpreterBase):
                 exe = self.func_find_program(node, (args[1], ), {})
             else:
                 raise InterpreterException('Second argument must be executable.')
+
         par = kwargs.get('is_parallel', True)
         if not isinstance(par, bool):
             raise InterpreterException('Keyword argument is_parallel must be a boolean.')
