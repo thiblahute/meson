@@ -779,6 +779,12 @@ This object is returned by [`meson.get_compiler(lang)`](#meson-object). It repre
 - `symbols_have_underscore_prefix()` returns `true` if the C symbol mangling is one underscore (`_`) prefixed to the symbol, available since 0.37.0.
 - `compute_int(expr, ...')` computes the value of the given expression (as an example `1 + 2`). When cross compiling this is evaluated with an iterative algorithm, you can specify keyword arguments `low` (defaults to -1024), `high` (defaults to 1024) and `guess` to specify max and min values for the search and the value to try first.
 - `get_define(definename)` returns the given preprocessor symbol's value as a string or empty string if it is not defined.
+- `find_dependency(depname)` returns a [`dependency`](#dependency-object). Arguments:
+    * `libs`: A list of library name to be found and used when linking against the return dependency
+    * `headers`: A list of header names to be found for the dependency to be usable
+    * `headers_symbols`: A list of 2 tuples in the form `[['header1_name.h', 'symbol1_name']]`
+    * `required`: Weather the dependency is required
+    * `links`: A list of snippets to be compiled and linked for the dependency to be usable
 
 The following keyword arguments can be used:
 
