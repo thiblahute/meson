@@ -242,6 +242,10 @@ def validate_install(srcdir, installdir, compiler):
         # extra PDB files found.
         if fname not in expected and not fname.endswith('.pdb') and compiler == 'cl':
             ret_msg += 'Extra file {0} found.\n'.format(fname)
+
+    if ret_msg:
+        ret_msg += 'Found files: {0}.\n'.format(found)
+
     return ret_msg
 
 def log_text_file(logfile, testdir, stdo, stde):
