@@ -48,7 +48,7 @@ def ninja_quote(text):
 
 
 class NinjaBuildElement:
-    def __init__(self, all_outputs, outfilenames, rule, infilenames):
+    def __init__(self, all_outputs, outfilenames, rule, infilenames, allow_backslashes=False):
         if isinstance(outfilenames, str):
             self.outfilenames = [outfilenames]
         else:
@@ -63,6 +63,7 @@ class NinjaBuildElement:
         self.orderdeps = set()
         self.elems = []
         self.all_outputs = all_outputs
+        self.allow_backslashes = allow_backslashes
 
     def add_dep(self, dep):
         if isinstance(dep, list):
@@ -95,8 +96,10 @@ class NinjaBuildElement:
         # This is the only way I could find to make this work on all
         # platforms including Windows command shell. Slash is a dir separator
         # on Windows, too, so all characters are unambiguous and, more importantly,
-        # do not require quoting.
-        line = line.replace('\\', '/')
+        # do not require quoting, unless explicitely specified, which is necessary for
+        # the csc compiler.
+        if not self.allow_backslashes:
+            line = line.replace('\\', '/')
         outfile.write(line)
 
         # All the entries that should remain unquoted
@@ -965,7 +968,7 @@ int dummy;
         outname_rel = os.path.join(self.get_target_dir(target), fname)
         src_list = target.get_sources()
         compiler = target.compilers['cs']
-        rel_srcs = [s.rel_to_builddir(self.build_to_src) for s in src_list]
+        rel_srcs = [os.path.normpath(s.rel_to_builddir(self.build_to_src)) for s in src_list]
         deps = []
         commands = CompilerArgs(compiler, target.extra_args.get('cs', []))
         commands += compiler.get_buildtype_args(buildtype)
@@ -991,15 +994,16 @@ int dummy;
         for rel_src in generated_sources.keys():
             dirpart, fnamepart = os.path.split(rel_src)
             if rel_src.lower().endswith('.cs'):
-                rel_srcs.append(rel_src)
-            deps.append(rel_src)
+                rel_srcs.append(os.path.normpath(rel_src))
+            deps.append(os.path.normpath(rel_src))
 
         for dep in target.get_external_deps():
             commands.extend_direct(dep.get_link_args())
         commands += self.build.get_project_args(compiler, target.subproject)
         commands += self.build.get_global_args(compiler)
 
-        elem = NinjaBuildElement(self.all_outputs, outputs, 'cs_COMPILER', rel_srcs)
+        elem = NinjaBuildElement(self.all_outputs, outputs, 'cs_COMPILER', rel_srcs,
+                                 allow_backslashes=True)
         elem.add_dep(deps)
         elem.add_item('ARGS', commands)
         elem.write(outfile)
