@@ -48,7 +48,7 @@ def ninja_quote(text):
 
 
 class NinjaBuildElement:
-    def __init__(self, all_outputs, outfilenames, rule, infilenames, allow_backslashes=False):
+    def __init__(self, all_outputs, outfilenames, rule, infilenames):
         if isinstance(outfilenames, str):
             self.outfilenames = [outfilenames]
         else:
@@ -63,7 +63,6 @@ class NinjaBuildElement:
         self.orderdeps = set()
         self.elems = []
         self.all_outputs = all_outputs
-        self.allow_backslashes = allow_backslashes
 
     def add_dep(self, dep):
         if isinstance(dep, list):
@@ -98,8 +97,7 @@ class NinjaBuildElement:
         # on Windows, too, so all characters are unambiguous and, more importantly,
         # do not require quoting, unless explicitely specified, which is necessary for
         # the csc compiler.
-        if not self.allow_backslashes:
-            line = line.replace('\\', '/')
+        line = line.replace('\\', '/')
         outfile.write(line)
 
         # All the entries that should remain unquoted
@@ -1002,8 +1000,7 @@ int dummy;
         commands += self.build.get_project_args(compiler, target.subproject)
         commands += self.build.get_global_args(compiler)
 
-        elem = NinjaBuildElement(self.all_outputs, outputs, 'cs_COMPILER', rel_srcs,
-                                 allow_backslashes=True)
+        elem = NinjaBuildElement(self.all_outputs, outputs, 'cs_COMPILER', rel_srcs)
         elem.add_dep(deps)
         elem.add_item('ARGS', commands)
         elem.write(outfile)
@@ -1541,7 +1538,15 @@ int dummy;
     def generate_cs_compile_rule(self, compiler, outfile):
         rule = 'rule %s_COMPILER\n' % compiler.get_language()
         invoc = ' '.join([ninja_quote(i) for i in compiler.get_exelist()])
-        command = ' command = %s $ARGS $in\n' % invoc
+
+        if mesonlib.is_windows():
+            command = ''' command = {executable}  @$out.rsp
+ rspfile = $out.rsp
+ rspfile_content =  $ARGS  $in
+'''.format(executable=invoc)
+        else:
+            command = ' command = %s $ARGS $in\n' % invoc
+
         description = ' description = Compiling C Sharp target $out.\n'
         outfile.write(rule)
         outfile.write(command)
