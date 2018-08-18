@@ -616,7 +616,7 @@ class GnomeModule(ExtensionModule):
 
         return gir_filelist_filename
 
-    def _make_gir_target(self, state, girfile, scan_command, depends, kwargs):
+    def _make_gir_target(self, state, girfile, scan_command, depends, girtargets, kwargs):
         scankwargs = {'output': girfile,
                       'command': scan_command,
                       'depends': depends}
@@ -629,7 +629,7 @@ class GnomeModule(ExtensionModule):
         if 'build_by_default' in kwargs:
             scankwargs['build_by_default'] = kwargs['build_by_default']
 
-        return GirTarget(girfile, state.subdir, state.subproject, scankwargs)
+        return GirTarget(girfile, state.subdir, state.subproject, girtargets, scankwargs)
 
     def _make_typelib_target(self, state, typelib_output, typelib_cmd, kwargs):
         typelib_kwargs = {
@@ -779,7 +779,7 @@ class GnomeModule(ExtensionModule):
         scan_command += list(internal_ldflags)
         scan_command += list(external_ldflags)
 
-        scan_target = self._make_gir_target(state, girfile, scan_command, depends, kwargs)
+        scan_target = self._make_gir_target(state, girfile, scan_command, depends, girtargets, kwargs)
 
         typelib_output = '%s-%s.typelib' % (ns, nsversion)
         typelib_cmd = [gicompiler, scan_target, '--output', '@OUTPUT@']

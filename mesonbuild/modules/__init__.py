@@ -59,8 +59,9 @@ class GResourceHeaderTarget(build.CustomTarget):
         super().__init__(name, subdir, subproject, kwargs)
 
 class GirTarget(build.CustomTarget):
-    def __init__(self, name, subdir, subproject, kwargs):
+    def __init__(self, name, subdir, subproject, girtargets, kwargs):
         super().__init__(name, subdir, subproject, kwargs)
+        self.girtargets = girtargets
 
 class TypelibTarget(build.CustomTarget):
     def __init__(self, name, subdir, subproject, kwargs):
