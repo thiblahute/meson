@@ -22,6 +22,7 @@ from mesonbuild.coredata import MesonException
 from . import ModuleReturnValue
 from . import ExtensionModule
 from . import get_include_args
+from . import GirTarget, TypelibTarget
 from ..dependencies import Dependency, InternalDependency, ExternalProgram
 from ..interpreterbase import FeatureNew, InvalidArguments, noPosargs, noKwargs
 from ..interpreter import CustomTargetHolder
@@ -56,6 +57,8 @@ class HotdocTargetBuilder:
         self.extra_assets = set()
         self._dependencies = []
         self._subprojects = []
+        self.index = None
+        self.sitemap = ''
 
     def process_known_arg(self, option, types, argname=None,
                           value_processor=None, mandatory=False,
@@ -63,12 +66,14 @@ class HotdocTargetBuilder:
         if not argname:
             argname = option.strip("-").replace("-", "_")
 
-        value, unprocessed_value = self.get_value(
+        value, _ = self.get_value(
             types, argname, None, value_processor, mandatory, force_list)
 
-        self.set_arg_value(option, argname, value, unprocessed_value)
+        self.set_arg_value(option, value)
 
-    def set_arg_value(self, option, argname, value, unprocessed_value=None):
+        return value
+
+    def set_arg_value(self, option, value):
         if value is None:
             return
 
@@ -87,7 +92,7 @@ class HotdocTargetBuilder:
     def process_extra_args(self):
         for arg, value in self.kwargs.items():
             option = "--" + arg.replace("_", "-")
-            self.set_arg_value(option, arg, value)
+            self.set_arg_value(option, value)
 
     def get_value(self, types, argname, default=None, value_processor=None,
                   mandatory=False, force_list=False):
@@ -176,6 +181,97 @@ class HotdocTargetBuilder:
         for assets_path in self._extra_assets:
             self.cmd.extend(["--extra-assets", assets_path])
 
+    def create_sitemap_if_needed(self, index_name):
+        if self.sitemap:
+            return
+
+        sitemap_txt = ''
+        if self.index is not None:
+            sitemap_txt += self.index + '\n\t'
+        sitemap_txt += index_name
+
+        self.sitemap = os.path.join(self.builddir, self.subdir, '%s-%s-sitemap.txt' % (
+            self.name, self.project_version))
+        with open(self.sitemap, 'w') as sitemap:
+            sitemap.write(sitemap_txt)
+
+        self.cmd += ['--sitemap', self.sitemap]
+
+    def process_libs(self, libs, languages, lang_prefix=''):
+        self.process_dependencies(libs)
+        c_includes = []
+        for lib in libs:
+            for language, compiler in lib.compilers.items():
+                if not lang_prefix:
+                    languages.append(language)
+
+                sources, _ = self.get_value((str, mesonlib.File, list),
+                                            argname='%s%s_sources' % (lang_prefix.replace("-", "_"), language), default=[],
+                                            force_list=True, value_processor=self.file_to_path)
+                source_filters, _ = self.get_value((str, mesonlib.File, list),
+                                            argname='%s%s_sources_filters' % (lang_prefix.replace("-", "_"), language), default=[],
+                                            force_list=True, value_processor=self.file_to_path)
+                for source in lib.sources:
+                    ext = os.path.splitext(source.fname)[1].lstrip('.')
+                    if ext in compiler.can_compile_suffixes:
+                        sources.append(self.file_to_path(source))
+
+                if language == 'c':
+                    for i in reversed(lib.get_include_dirs()):
+                        basedir = i.get_curdir()
+                        # We should iterate include dirs in reversed orders because
+                        # -Ipath will add to begin of array. And without reverse
+                        # flags will be added in reversed order.
+                        for d in reversed(i.get_incdirs()):
+                            # Avoid superfluous '/.' at the end of paths when d is '.'
+                            if d not in ('', '.'):
+                                expdir = os.path.join(basedir, d)
+                            else:
+                                expdir = basedir
+
+                            if i.is_system:
+                                c_includes.append(os.path.join(self.builddir, expdir))
+                            else:
+                                c_includes.append(os.path.join(self.builddir, expdir))
+                                c_includes.append(os.path.join(self.sourcedir, expdir))
+
+                self.set_arg_value('--%s%s-sources' % (lang_prefix, language),
+                    mesonlib.listify(sources, flatten=True))
+                if source_filters:
+                    self.set_arg_value('--%s%s-sources' % (lang_prefix, language), source_filters)
+                self.create_sitemap_if_needed('%s-index' % language)
+
+        if c_includes:
+            self.set_arg_value('--c-include-directories', c_includes)
+
+    def process_documented_targets(self):
+        languages = mesonlib.listify(self.kwargs.pop('languages', []))
+        targets = mesonlib.listify(self.kwargs.pop('documented_targets', []))
+
+        gi_sources = []
+        for target in targets:
+            target = getattr(target, 'held_object', target)
+
+            if isinstance(target, TypelibTarget):
+                pass
+            elif isinstance(target, GirTarget):
+                self.create_sitemap_if_needed('gi-index')
+                self.process_dependencies(target)
+                gi_sources.append(os.path.join(self.builddir, target.get_subdir(), target.get_filename()))
+                self.process_libs(target.girtargets, languages, 'gi-')
+            elif isinstance(target, build.BuildTarget):
+                self.process_libs([target], languages)
+            else:
+                raise InvalidArguments('Target type "%s" not supported.' % target)
+
+        if gi_sources:
+            self.cmd += ['--gi-sources'] + gi_sources
+            self.cmd.append('--gi-smart-index')
+        if languages:
+            self.cmd += ['languages'] + languages
+            for lang in languages:
+                self.cmd.append('--%s-smart-index' % lang)
+
     def process_subprojects(self):
         _, value = self.get_value([
             list, HotdocTarget], argname="subprojects",
@@ -189,10 +285,18 @@ class HotdocTargetBuilder:
         ncwd = os.path.join(self.sourcedir, self.subdir)
         mlog.log('Generating Hotdoc configuration for: ', mlog.bold(self.name))
         os.chdir(ncwd)
-        self.hotdoc.run_hotdoc(self.cmd)
+        self.hotdoc.run_hotdoc(mesonlib.listify(self.cmd, flatten=True))
         os.chdir(cwd)
 
-    def file_to_path(self, value):
+    def file_to_path(self, value, res=None):
+        if isinstance(value, list):
+            if res is None:
+                res = []
+            for val in value:
+                res.append(self.file_to_path(val))
+
+            return res
+
         if isinstance(value, mesonlib.File):
             return value.absolute_path(self.state.environment.get_source_dir(),
                                        self.state.environment.get_build_dir())
@@ -226,17 +330,19 @@ class HotdocTargetBuilder:
     def make_targets(self):
         self.check_forbiden_args()
         file_types = (str, mesonlib.File)
-        self.process_known_arg("--index", file_types, mandatory=True)
-        self.process_known_arg("--sitemap", file_types, mandatory=True, value_processor=self.file_to_path)
+        self.project_version = self.process_known_arg("--project-version", (str), mandatory=True)
+        self.index = self.process_known_arg("--index", file_types, mandatory=False)
+        self.sitemap = self.process_known_arg("--sitemap", file_types, mandatory=False, value_processor=self.file_to_path)
         self.process_known_arg("--html-extra-theme", file_types, value_processor=self.make_relative_path)
         self.process_known_arg("--include-paths", (str, mesonlib.File, list), value_processor=self.make_relative_path)
-        self.process_known_arg("--c-sources", (str, list), force_list=True)
         self.process_known_arg("--extra-assets", (str, list), force_list=True)
         self.process_known_arg(None, (str, list), "include_paths", force_list=True,
                                value_processor=lambda x: ["--include-paths=%s" % v for v in ensure_list(x)])
         self.process_known_arg('--c-include-directories',
                                [Dependency, build.StaticLibrary, build.SharedLibrary, list], argname="dependencies",
                                force_list=True, value_processor=self.process_dependencies)
+
+        self.process_documented_targets()
         self.process_extra_assets()
         self.process_extra_extension_paths()
         self.process_subprojects()
