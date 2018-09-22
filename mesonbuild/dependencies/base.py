@@ -708,7 +708,7 @@ class PkgConfigDependency(ExternalDependency):
                 lib = shared_lib
                 if lib in link_args:
                     continue
-            link_args.append(lib)
+            link_args.append(os.path.normpath(lib))
         # Add all -Lbar args if we have -lfoo args in link_args
         if libs_notfound:
             # Order of -L flags doesn't matter with ld, but it might with other
