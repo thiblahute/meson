@@ -16,6 +16,7 @@
 
 import json
 import os
+import subprocess
 from collections import OrderedDict
 
 from mesonbuild import mesonlib
@@ -38,9 +39,18 @@ def ensure_list(value):
 MIN_HOTDOC_VERSION = '0.8.100'
 
 
+def has_extension(hotdoc, *args):
+    if not isinstance(getattr(hotdoc, "held_object", hotdoc), OverrideProgram):
+        try:
+            subprocess.check_output(hotdoc.get_command() + ['--has-extension=%s' % extension for extension in args])
+        except (MesonException, FileNotFoundError, subprocess.CalledProcessError):
+            return False
+    return True
+
+
 class HotdocTargetBuilder:
     def __init__(self, name, state, hotdoc, interpreter, kwargs):
-        self.hotdoc = hotdoc
+        self.hotdoc = interpreter.find_program_impl('hotdoc', wanted='>=' + MIN_HOTDOC_VERSION)
         self.build_by_default = kwargs.pop('build_by_default', False)
         self.kwargs = kwargs
         self.name = name
@@ -149,7 +159,7 @@ class HotdocTargetBuilder:
         return string.replace("@SOURCE_ROOT@", self.sourcedir).replace("@BUILD_ROOT@", self.builddir)
 
     def process_gi_c_source_roots(self):
-        if self.hotdoc.run_hotdoc(['--has-extension=gi-extension']) != 0:
+        if has_extension(self.hotdoc, 'gi-extension'):
             return
 
         value, _ = self.get_value([list, str], 'gi_c_source_roots', default=[], force_list=True)
@@ -405,16 +415,10 @@ class HotDocModule(ExtensionModule):
         if not self.hotdoc.found():
             raise MesonException('hotdoc executable not found')
 
-        try:
-            from hotdoc.run_hotdoc import run  # noqa: F401
-            self.hotdoc.run_hotdoc = run
-        except Exception as e:
-            raise MesonException('hotdoc %s required but not found. (%s)' % (
-                MIN_HOTDOC_VERSION, e))
-
     @noKwargs
     def has_extensions(self, state, args, kwargs):
-        res = self.hotdoc.run_hotdoc(['--has-extension=%s' % extension for extension in args]) == 0
+        # Handle overridden g-ir-scanner
+        res = has_extension(self.hotdoc, *args)
         return ModuleReturnValue(res, [res])
 
     def generate_doc(self, state, args, kwargs):
