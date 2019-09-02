@@ -14,6 +14,7 @@
 
 '''This module provides helper functions for generating documentation using hotdoc'''
 
+import json
 import os
 from collections import OrderedDict
 
@@ -25,7 +26,7 @@ from . import ExtensionModule
 from . import get_include_args
 from ..dependencies import Dependency, InternalDependency, ExternalProgram
 from ..interpreterbase import FeatureNew, InvalidArguments, noPosargs, noKwargs
-from ..interpreter import CustomTargetHolder
+from ..interpreter import CustomTargetHolder, OverrideProgram
 
 
 def ensure_list(value):
@@ -52,13 +53,11 @@ class HotdocTargetBuilder:
         self.subdir = state.subdir
         self.build_command = state.environment.get_build_command()
 
-        self.cmd = ['conf', '--project-name', name, "--disable-incremental-build",
-                    '--output', os.path.join(self.builddir, self.subdir, self.name + '-doc')]
-
         self._extra_extension_paths = set()
         self.extra_assets = set()
         self._dependencies = []
         self._subprojects = []
+        self.json = {'project_name': name, 'output': os.path.join(self.builddir, self.subdir, self.name + '-doc')}
 
     def process_known_arg(self, option, types, argname=None,
                           value_processor=None, mandatory=False,
@@ -72,21 +71,15 @@ class HotdocTargetBuilder:
         self.set_arg_value(option, value)
 
     def set_arg_value(self, option, value):
-        if value is None:
+        if value is None or option is None:
             return
 
-        if isinstance(value, bool):
-            if value:
-                self.cmd.append(option)
-        elif isinstance(value, list):
-            # Do not do anything on empty lists
-            if value:
-                if option:
-                    self.cmd.extend([option] + value)
-                else:
-                    self.cmd.extend(value)
-        else:
-            self.cmd.extend([option, value])
+        if option in self.json:
+            assert isinstance(self.json[option], list)
+            self.json[option].append(value)
+
+            return
+        self.json[option] = value
 
     def check_extra_arg_type(self, arg, value):
         value = getattr(value, 'held_object', value)
@@ -102,9 +95,8 @@ class HotdocTargetBuilder:
 
     def process_extra_args(self):
         for arg, value in self.kwargs.items():
-            option = "--" + arg.replace("_", "-")
             self.check_extra_arg_type(arg, value)
-            self.set_arg_value(option, value)
+            self.set_arg_value(arg, value)
 
     def get_value(self, types, argname, default=None, value_processor=None,
                   mandatory=False, force_list=False):
@@ -147,7 +139,7 @@ class HotdocTargetBuilder:
                 continue
 
             self._extra_extension_paths.add(path)
-            self.cmd.extend(["--extra-extension-path", path])
+            self.add_to_list('extra_extension_path', path)
 
     def process_extra_extension_paths(self):
         self.get_value([list, str], 'extra_extensions_paths',
@@ -167,7 +159,7 @@ class HotdocTargetBuilder:
             os.path.join(self.state.environment.get_build_dir(), self.interpreter.subproject_dir, self.state.subproject)
         ])
 
-        self.cmd += ['--gi-c-source-roots'] + value
+        self.json['gi_c_source_roots'] = value
 
     def process_dependencies(self, deps):
         cflags = set()
@@ -192,18 +184,22 @@ class HotdocTargetBuilder:
                 self._subprojects.extend(dep.subprojects)
                 self.process_dependencies(dep.subprojects)
                 self.add_include_path(os.path.join(self.builddir, dep.hotdoc_conf.subdir))
-                self.cmd += ['--extra-assets=' + p for p in dep.extra_assets]
+                self.add_to_list('extra_assets', list(dep.extra_assets))
                 self.add_extension_paths(dep.extra_extension_paths)
             elif isinstance(dep, build.CustomTarget) or isinstance(dep, build.BuildTarget):
                 self._dependencies.append(dep)
 
         return [f.strip('-I') for f in cflags]
 
+    def add_to_list(self, key, val):
+        l = self.json.get(key, [])
+        l.extend(val)
+        self.json[key] = l
+
     def process_extra_assets(self):
         self._extra_assets, _ = self.get_value("--extra-assets", (str, list), default=[],
                                                force_list=True)
-        for assets_path in self._extra_assets:
-            self.cmd.extend(["--extra-assets", assets_path])
+        self.add_to_list('extra_assets', list(self.extra_assets))
 
     def process_subprojects(self):
         _, value = self.get_value([
@@ -213,33 +209,57 @@ class HotdocTargetBuilder:
         if value is not None:
             self._subprojects.extend(value)
 
-    def flatten_config_command(self):
-        cmd = []
-        for arg in mesonlib.listify(self.cmd, flatten=True):
-            arg = getattr(arg, 'held_object', arg)
-            if isinstance(arg, mesonlib.File):
-                arg = arg.absolute_path(self.state.environment.get_source_dir(),
-                                        self.state.environment.get_build_dir())
-            elif isinstance(arg, build.IncludeDirs):
-                for inc_dir in arg.get_incdirs():
-                    cmd.append(os.path.join(self.sourcedir, arg.get_curdir(), inc_dir))
-                    cmd.append(os.path.join(self.builddir, arg.get_curdir(), inc_dir))
+    def stringify_value(self, value, is_path):
+        if isinstance(value, mesonlib.File):
+            return value.absolute_path(self.state.environment.get_source_dir(),
+                                    self.state.environment.get_build_dir())
+        elif isinstance(value, build.IncludeDirs):
+            res = []
+            for inc_dir in value.get_incdirs():
+                res.append(os.path.join(self.sourcedir, value.get_curdir(), inc_dir))
+                res.append(os.path.join(self.builddir, value.get_curdir(), inc_dir))
 
-                continue
-            elif isinstance(arg, build.CustomTarget) or isinstance(arg, build.BuildTarget):
-                self._dependencies.append(arg)
-                arg = self.interpreter.backend.get_target_filename_abs(arg)
+            return res
+        elif isinstance(value, build.CustomTarget) or isinstance(value, build.BuildTarget):
+            return self.interpreter.backend.get_target_filename_abs(value)
+        elif is_path and isinstance(value, str):
+            return os.path.abspath(value)
 
-            cmd.append(arg)
+        return value
 
-        return cmd
+    def save_config(self, config_path):
+        config = {}
+        for key, value in self.json.items():
+            key = key.replace('-', '_')
+            is_path = key.endswith('index') or key.endswith('sources') or key == 'include_paths'
+            if isinstance(value, list):
+                reslist = []
+                value = mesonlib.listify(value, flatten=True)
+                for v in value:
+                    reslist.append(self.stringify_value(v, is_path))
+                value = reslist
+            else:
+                value = self.stringify_value(value, is_path)
 
-    def generate_hotdoc_config(self):
+            if isinstance(value, str) and (key.endswith('sources') or key == 'extra_c_flags'):
+                value = [value]
+
+            # stringify_value might return nested lists
+            if isinstance(value, list):
+                value = mesonlib.listify(value, flatten=True)
+
+            config[key] = value
+
+        with open(config_path, 'w') as f:
+            json.dump(config, f, indent=4)
+
+
+    def generate_hotdoc_config(self, path):
         cwd = os.path.abspath(os.curdir)
         ncwd = os.path.join(self.sourcedir, self.subdir)
         mlog.log('Generating Hotdoc configuration for: ', mlog.bold(self.name))
         os.chdir(ncwd)
-        self.hotdoc.run_hotdoc(self.flatten_config_command())
+        self.save_config(path)
         os.chdir(cwd)
 
     def ensure_file(self, value):
@@ -276,13 +296,13 @@ class HotdocTargetBuilder:
     def make_targets(self):
         self.check_forbiden_args()
         file_types = (str, mesonlib.File)
-        self.process_known_arg("--index", file_types, mandatory=True, value_processor=self.ensure_file)
-        self.process_known_arg("--project-version", str, mandatory=True)
-        self.process_known_arg("--sitemap", file_types, mandatory=True, value_processor=self.ensure_file)
-        self.process_known_arg("--html-extra-theme", str, value_processor=self.ensure_dir)
+        self.process_known_arg("index", file_types, mandatory=True, value_processor=self.ensure_file)
+        self.process_known_arg("project_version", str, mandatory=True)
+        self.process_known_arg("sitemap", file_types, mandatory=True, value_processor=self.ensure_file)
+        self.process_known_arg("html_extra_theme", str, value_processor=self.ensure_dir)
         self.process_known_arg(None, list, "include_paths", force_list=True,
                                value_processor=lambda x: [self.add_include_path(self.ensure_dir(v)) for v in ensure_list(x)])
-        self.process_known_arg('--c-include-directories',
+        self.process_known_arg('c_include_directories',
                                [Dependency, build.StaticLibrary, build.SharedLibrary, list], argname="dependencies",
                                force_list=True, value_processor=self.process_dependencies)
         self.process_gi_c_source_roots()
@@ -300,19 +320,16 @@ class HotdocTargetBuilder:
         with open(hotdoc_config_path, 'w') as f:
             f.write('{}')
 
-        self.cmd += ['--conf-file', hotdoc_config_path]
         self.add_include_path(os.path.join(self.builddir, self.subdir))
         self.add_include_path(os.path.join(self.sourcedir, self.subdir))
 
         depfile = os.path.join(self.builddir, self.subdir, self.name + '.deps')
-        self.cmd += ['--deps-file-dest', depfile]
-
-        for path in self.include_paths.keys():
-            self.cmd.extend(['--include-path', path])
+        self.json['deps_file_dest'] = depfile
+        self.json['include_paths'] = list(self.include_paths.keys())
 
         if self.state.environment.coredata.get_builtin_option('werror'):
-            self.cmd.append('--fatal-warning')
-        self.generate_hotdoc_config()
+            self.json['fatal_warnings'] = True
+        self.generate_hotdoc_config(hotdoc_config_path)
 
         target_cmd = self.build_command + ["--internal", "hotdoc"] + \
             self.hotdoc.get_command() + ['run', '--conf-file', hotdoc_config_name] + \
