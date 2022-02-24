@@ -13,12 +13,14 @@
 # limitations under the License.
 from __future__ import annotations
 
+from __future__ import annotations
 import os
 import typing as T
 
 from . import ExtensionModule, ModuleReturnValue, ModuleInfo
 from .. import mlog
 from ..build import BothLibraries, BuildTarget, CustomTargetIndex, Executable, ExtractedObjects, GeneratedList, IncludeDirs, CustomTarget, StructuredSources
+from ..cargo.interpreter import load_all_manifests
 from ..compilers.compilers import are_asserts_disabled
 from ..dependencies import Dependency, ExternalLibrary
 from ..interpreter.type_checking import DEPENDENCIES_KW, TEST_KWS, OUTPUT_KW, INCLUDE_DIRECTORIES
@@ -48,6 +50,11 @@ if T.TYPE_CHECKING:
         output: str
         dependencies: T.List[T.Union[Dependency, ExternalLibrary]]
 
+    class FuncCargo(_kwargs.ExtractRequired):
+
+        disabler: bool
+        version: T.List[str]
+
 
 class RustModule(ExtensionModule):
 
@@ -61,6 +68,7 @@ class RustModule(ExtensionModule):
         self.methods.update({
             'test': self.test,
             'bindgen': self.bindgen,
+            'cargo': self.cargo,
         })
 
     @typed_pos_args('rust.test', str, BuildTarget)
@@ -247,6 +255,35 @@ class RustModule(ExtensionModule):
         )
 
         return ModuleReturnValue([target], [target])
+
+    @FeatureNew('rust.cargo', '0.62.0')
+    @disablerIfNotFound
+    @typed_pos_args('rust.cargo', str)
+    @typed_kwargs(
+        'rust.cargo',
+        DISABLER_KW,
+        REQUIRED_KW,
+        KwargInfo(
+            'version',
+            ContainerTypeInfo(list, str),
+            default=[],
+            listify=True,
+        ),
+    )
+    def cargo(self, state: 'ModuleState', args: T.Tuple[str], kwargs: FuncCargo) -> Dependency:
+        # Load cargo manifests on the first cargo subproject call
+        # We need to do this because a cargo workspace can contain
+        # multiple subprojects
+        if not self.interpreter.cargo_subprojects:
+            self.interpreter.cargo_subprojects = load_all_manifests(self.interpreter.subproject_dir)
+        kw: _kwargs.DoSubproject = {
+            'required': kwargs['required'],
+            'cmake_options': [],
+            'options': None,
+            'default_options': [],
+            'version': kwargs['version'],
+        }
+        return self.interpreter.do_subproject(args[0], 'cargo', kw)
 
 
 def initialize(interp: Interpreter) -> RustModule:
