@@ -12,12 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 from __future__ import annotations
-
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import re
 import codecs
 import os
 import typing as T
+
 from .mesonlib import MesonException
 from . import mlog
 
@@ -240,7 +240,7 @@ class Lexer:
             if not matched:
                 raise ParseException('lexer', self.getline(line_start), lineno, col)
 
-@dataclass(eq=False)
+@dataclass
 class BaseNode:
     lineno: int
     colno: int
@@ -266,11 +266,19 @@ class BaseNode:
             if callable(func):
                 func(self)
 
+@dataclass(init=False)
 class ElementaryNode(T.Generic[TV_TokenTypes], BaseNode):
+
+    value: TV_TokenTypes
+    bytespan: T.Tuple[int, int]
+
     def __init__(self, token: Token[TV_TokenTypes]):
         super().__init__(token.lineno, token.colno, token.filename)
-        self.value = token.value        # type: TV_TokenTypes
-        self.bytespan = token.bytespan  # type: T.Tuple[int, int]
+        self.value = token.value
+        self.bytespan = token.bytespan
+
+    def __hash__(self) -> int:
+        return id(self)
 
 class BooleanNode(ElementaryNode[bool]):
     def __init__(self, token: Token[bool]):
@@ -316,13 +324,22 @@ class ContinueNode(ElementaryNode):
 class BreakNode(ElementaryNode):
     pass
 
+@dataclass(init=False)
 class ArgumentNode(BaseNode):
+
+    arguments: T.List[BaseNode] = field()
+    commas: T.List[Token[TV_TokenTypes]] = field()
+    kwargs: T.Dict[BaseNode, BaseNode] = field()
+
     def __init__(self, token: Token[TV_TokenTypes]):
         super().__init__(token.lineno, token.colno, token.filename)
         self.arguments = []  # type: T.List[BaseNode]
         self.commas = []     # type: T.List[Token[TV_TokenTypes]]
         self.kwargs = {}     # type: T.Dict[BaseNode, BaseNode]
         self.order_error = False
+
+    def __hash__(self) -> int:
+        return id(self)
 
     def prepend(self, statement: BaseNode) -> None:
         if self.num_kwargs() > 0:
@@ -357,12 +374,20 @@ class ArgumentNode(BaseNode):
     def __len__(self) -> int:
         return self.num_args() # Fixme
 
+@dataclass(init=False)
 class ArrayNode(BaseNode):
+
+    args: ArgumentNode
+
     def __init__(self, args: ArgumentNode, lineno: int, colno: int, end_lineno: int, end_colno: int):
         super().__init__(lineno, colno, args.filename, end_lineno=end_lineno, end_colno=end_colno)
-        self.args = args              # type: ArgumentNode
+        self.args = args
 
+@dataclass(init=False)
 class DictNode(BaseNode):
+
+    args: ArgumentNode
+
     def __init__(self, args: ArgumentNode, lineno: int, colno: int, end_lineno: int, end_colno: int):
         super().__init__(lineno, colno, args.filename, end_lineno=end_lineno, end_colno=end_colno)
         self.args = args
@@ -372,95 +397,181 @@ class EmptyNode(BaseNode):
         super().__init__(lineno, colno, filename)
         self.value = None
 
+    def __eq__(self, other: object) -> bool:
+        return isinstance(other, EmptyNode)
+
+@dataclass(init=False)
 class OrNode(BaseNode):
+
+    left: BaseNode
+    right: BaseNode
+
     def __init__(self, left: BaseNode, right: BaseNode):
         super().__init__(left.lineno, left.colno, left.filename)
-        self.left = left    # type: BaseNode
-        self.right = right  # type: BaseNode
+        self.left = left
+        self.right = right
 
+@dataclass(init=False)
 class AndNode(BaseNode):
+
+    left: BaseNode
+    right: BaseNode
+
     def __init__(self, left: BaseNode, right: BaseNode):
         super().__init__(left.lineno, left.colno, left.filename)
-        self.left = left    # type: BaseNode
-        self.right = right  # type: BaseNode
+        self.left = left
+        self.right = right
 
+@dataclass(init=False)
 class ComparisonNode(BaseNode):
+
+    left: BaseNode
+    right: BaseNode
+    ctype: COMPARISONS
+
     def __init__(self, ctype: COMPARISONS, left: BaseNode, right: BaseNode):
         super().__init__(left.lineno, left.colno, left.filename)
-        self.left = left    # type: BaseNode
-        self.right = right  # type: BaseNode
+        self.left = left
+        self.right = right
         self.ctype = ctype
 
+@dataclass(init=False)
 class ArithmeticNode(BaseNode):
+
+    left: BaseNode
+    right: BaseNode
+    operation: str  # TODO: use a Literal
+
     def __init__(self, operation: str, left: BaseNode, right: BaseNode):
         super().__init__(left.lineno, left.colno, left.filename)
-        self.left = left            # type: BaseNode
-        self.right = right          # type: BaseNode
-        self.operation = operation  # type: str
+        self.left = left
+        self.right = right
+        self.operation = operation
 
+@dataclass(init=False)
 class NotNode(BaseNode):
+
+    value: BaseNode
+
     def __init__(self, token: Token[TV_TokenTypes], value: BaseNode):
         super().__init__(token.lineno, token.colno, token.filename)
-        self.value = value  # type: BaseNode
+        self.value = value
 
+@dataclass(init=False)
 class CodeBlockNode(BaseNode):
+
+    lines: T.List[BaseNode]
+
     def __init__(self, token: Token[TV_TokenTypes]):
         super().__init__(token.lineno, token.colno, token.filename)
-        self.lines = []  # type: T.List[BaseNode]
+        self.lines = []
 
+@dataclass(init=False)
 class IndexNode(BaseNode):
+
+    iobject: BaseNode
+    index: BaseNode
+
     def __init__(self, iobject: BaseNode, index: BaseNode):
         super().__init__(iobject.lineno, iobject.colno, iobject.filename)
-        self.iobject = iobject  # type: BaseNode
-        self.index = index      # type: BaseNode
+        self.iobject = iobject
+        self.index = index
 
+@dataclass(init=False)
 class MethodNode(BaseNode):
+
+    source_object: BaseNode
+    name: str
+    args: ArgumentNode
+
     def __init__(self, filename: str, lineno: int, colno: int, source_object: BaseNode, name: str, args: ArgumentNode):
         super().__init__(lineno, colno, filename)
-        self.source_object = source_object  # type: BaseNode
-        self.name = name                    # type: str
+        self.source_object = source_object
+        self.name = name
         assert isinstance(self.name, str)
-        self.args = args                    # type: ArgumentNode
+        self.args = args
 
+    def __hash__(self) -> int:
+        return id(self)
+
+@dataclass(init=False)
 class FunctionNode(BaseNode):
+
+    func_name: str
+    args: ArgumentNode
+
     def __init__(self, filename: str, lineno: int, colno: int, end_lineno: int, end_colno: int, func_name: str, args: ArgumentNode):
         super().__init__(lineno, colno, filename, end_lineno=end_lineno, end_colno=end_colno)
-        self.func_name = func_name  # type: str
+        self.func_name = func_name
         assert isinstance(func_name, str)
-        self.args = args  # type: ArgumentNode
+        self.args = args
 
+    def __hash__(self) -> int:
+        return id(self)
+
+
+@dataclass(init=False)
 class AssignmentNode(BaseNode):
+
+    var_name: str
+    value: BaseNode
+
     def __init__(self, filename: str, lineno: int, colno: int, var_name: str, value: BaseNode):
         super().__init__(lineno, colno, filename)
-        self.var_name = var_name  # type: str
+        self.var_name = var_name
         assert isinstance(var_name, str)
-        self.value = value  # type: BaseNode
+        self.value = value
 
+
+@dataclass(init=False)
 class PlusAssignmentNode(BaseNode):
+
+    var_name: str
+    value: BaseNode
+
     def __init__(self, filename: str, lineno: int, colno: int, var_name: str, value: BaseNode):
         super().__init__(lineno, colno, filename)
-        self.var_name = var_name  # type: str
+        self.var_name = var_name
         assert isinstance(var_name, str)
-        self.value = value  # type: BaseNode
+        self.value = value
 
+
+@dataclass(init=False)
 class ForeachClauseNode(BaseNode):
+
+    varnames: T.List[str]
+    items: BaseNode
+    block: CodeBlockNode
+
     def __init__(self, token: Token, varnames: T.List[str], items: BaseNode, block: CodeBlockNode):
         super().__init__(token.lineno, token.colno, token.filename)
-        self.varnames = varnames  # type: T.List[str]
-        self.items = items        # type: BaseNode
-        self.block = block        # type: CodeBlockNode
+        self.varnames = varnames
+        self.items = items
+        self.block = block
 
+
+@dataclass(init=False)
 class IfNode(BaseNode):
+
+    condition: BaseNode
+    block: CodeBlockNode
+
     def __init__(self, linenode: BaseNode, condition: BaseNode, block: CodeBlockNode):
         super().__init__(linenode.lineno, linenode.colno, linenode.filename)
         self.condition = condition  # type: BaseNode
         self.block = block          # type: CodeBlockNode
 
+
+@dataclass(init=False)
 class IfClauseNode(BaseNode):
+
+    ifs: T.List[IfNode]
+    elseblock: T.Union[EmptyNode, CodeBlockNode]
+
     def __init__(self, linenode: BaseNode):
         super().__init__(linenode.lineno, linenode.colno, linenode.filename)
-        self.ifs = []          # type: T.List[IfNode]
-        self.elseblock = None  # type: T.Union[EmptyNode, CodeBlockNode]
+        self.ifs = []
+        self.elseblock = None
 
 class TestCaseClauseNode(BaseNode):
     def __init__(self, condition: BaseNode, block: CodeBlockNode):
@@ -468,12 +579,23 @@ class TestCaseClauseNode(BaseNode):
         self.condition = condition
         self.block = block
 
+@dataclass(init=False)
 class UMinusNode(BaseNode):
+
+    value: BaseNode
+
     def __init__(self, current_location: Token, value: BaseNode):
         super().__init__(current_location.lineno, current_location.colno, current_location.filename)
-        self.value = value  # type: BaseNode
+        self.value = value
 
+
+@dataclass(init=False)
 class TernaryNode(BaseNode):
+
+    condition: BaseNode
+    trueblock: BaseNode
+    falseblock: BaseNode
+
     def __init__(self, condition: BaseNode, trueblock: BaseNode, falseblock: BaseNode):
         super().__init__(condition.lineno, condition.colno, condition.filename)
         self.condition = condition    # type: BaseNode
