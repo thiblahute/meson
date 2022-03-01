@@ -405,7 +405,7 @@ class Resolver:
                 return wrap_name
         return None
 
-    def resolve(self, packagename: str, method: Literal['cmake', 'meson']) -> str:
+    def resolve(self, packagename: str, method: Literal['cmake', 'meson', 'cargo']) -> str:
         self.packagename = packagename
         self.directory = packagename
         self.wrap = self.wraps.get(packagename)
@@ -446,6 +446,8 @@ class Resolver:
             buildfile = os.path.join(self.dirname, 'meson.build')
         elif method == 'cmake':
             buildfile = os.path.join(self.dirname, 'CMakeLists.txt')
+        elif method == 'cargo':
+            buildfile = os.path.join(self.dirname, 'Cargo.toml')
         else:
             raise WrapException('Only the methods "meson" and "cmake" are supported')
 

@@ -36,6 +36,7 @@ from ..interpreterbase import Disabler, disablerIfNotFound
 from ..interpreterbase import FeatureNew, FeatureDeprecated, FeatureNewKwargs, FeatureDeprecatedKwargs
 from ..interpreterbase import ObjectHolder, ContextManagerObject
 from ..modules import ExtensionModule, ModuleObject, MutableModuleObject, NewExtensionModule, NotFoundExtensionModule
+from ..cargo.interpreter import interpret, tomllib
 from ..cmake import CMakeInterpreter
 from ..backend.backends import ExecutableSerialisation
 
@@ -106,11 +107,13 @@ import copy
 
 if T.TYPE_CHECKING:
     import argparse
+    from types import ModuleType
 
     from typing_extensions import Literal
 
     from . import kwargs as kwtypes
     from ..backend.backends import Backend
+    from ..cargo.interpreter import Manifest
     from ..interpreterbase.baseobjects import InterpreterObject, TYPE_var, TYPE_kwargs
     from ..programs import OverrideProgram
 
@@ -306,6 +309,7 @@ class Interpreter(InterpreterBase, HoldableObject):
         self.subprojects: T.Dict[str, SubprojectHolder] = {}
         self.subproject_stack: T.List[str] = []
         self.configure_file_outputs: T.Dict[str, int] = {}
+        self.cargo_subprojects: T.Dict[str, Manifest] = {}
         # Passed from the outside, only used in subprojects.
         if default_project_options:
             self.default_project_options = default_project_options.copy()
@@ -884,7 +888,7 @@ class Interpreter(InterpreterBase, HoldableObject):
         self.subprojects[subp_name] = sub
         return sub
 
-    def do_subproject(self, subp_name: str, method: Literal['meson', 'cmake'], kwargs: kwtypes.DoSubproject) -> SubprojectHolder:
+    def do_subproject(self, subp_name: str, method: Literal['meson', 'cmake', 'cargo'], kwargs: kwtypes.DoSubproject) -> SubprojectHolder:
         disabled, required, feature = extract_required_kwarg(kwargs, self.subproject)
         if disabled:
             mlog.log('Subproject', mlog.bold(subp_name), ':', 'skipped: feature', mlog.bold(feature), 'disabled')
@@ -920,7 +924,7 @@ class Interpreter(InterpreterBase, HoldableObject):
 
         r = self.environment.wrap_resolver
         try:
-            subdir = r.resolve(subp_name, method)
+            subdir = r.resolve(subp_name, method, self.cargo_subprojects)
         except wrap.WrapException as e:
             if not required:
                 mlog.log(e)
@@ -943,6 +947,8 @@ class Interpreter(InterpreterBase, HoldableObject):
                 return self._do_subproject_meson(subp_name, subdir, default_options, kwargs)
             elif method == 'cmake':
                 return self._do_subproject_cmake(subp_name, subdir, subdir_abs, default_options, kwargs)
+            elif method == 'cargo':
+                return self._do_subproject_cargo(subp_name, subdir, default_options, kwargs)
             else:
                 raise mesonlib.MesonBugException(f'The method {method} is invalid for the subproject {subp_name}')
         # Invalid code is always an error
@@ -1054,6 +1060,46 @@ class Interpreter(InterpreterBase, HoldableObject):
                     }
             )
             result.cm_interpreter = cm_int
+
+        mlog.log()
+        return result
+
+    def _do_subproject_cargo(self, subp_name: str, subdir: str,
+                             default_options: T.Dict[OptionKey, str],
+                             kwargs: kwargs.DoSubproject) -> SubprojectHolder:
+        if tomllib is None:
+            msg = f'Could not build cargo subproject {subp_name} because tomllib/tomli is not available'
+            if kwargs['required']:
+                raise mesonlib.MesonException(msg)
+            mlog.debug(msg)
+            return SubprojectHolder(NullSubprojectInterpreter(), subdir)
+
+        with mlog.nested(subp_name):
+
+            # Generate a meson ast and execute it with the normal do_subproject_meson
+            ast = interpret(self.cargo_subprojects[subp_name], self.environment)
+
+            mlog.log()
+            with mlog.nested('cargo-ast'):
+                mlog.log('Processing generated meson AST')
+
+                # Debug print the generated meson file
+                from ..ast import AstIndentationGenerator, AstPrinter
+                printer = AstPrinter()
+                ast.accept(AstIndentationGenerator())
+                ast.accept(printer)
+                printer.post_process()
+                meson_filename = os.path.join(self.build.environment.get_build_dir(), subdir, 'meson.build')
+                with open(meson_filename, "w", encoding='utf-8') as f:
+                    f.write(printer.result)
+
+                mlog.log('Build file:', meson_filename)
+                mlog.cmd_ci_include(meson_filename)
+                mlog.log()
+
+            result = self._do_subproject_meson(
+                subp_name, subdir, default_options, kwargs, ast,
+                [os.path.join(subdir, 'Cargo.toml')], is_translated=True)
 
         mlog.log()
         return result
