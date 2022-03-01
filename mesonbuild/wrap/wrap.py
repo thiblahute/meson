@@ -13,6 +13,7 @@
 # limitations under the License.
 from __future__ import annotations
 
+from __future__ import annotations
 from .. import mlog
 import contextlib
 from dataclasses import dataclass
@@ -44,6 +45,7 @@ from ..interpreterbase import SubProject
 from .. import mesonlib
 
 if T.TYPE_CHECKING:
+    from typing_extensions import Literal
     import http.client
 
 try:
@@ -403,7 +405,7 @@ class Resolver:
                 return wrap_name
         return None
 
-    def resolve(self, packagename: str, method: str) -> str:
+    def resolve(self, packagename: str, method: Literal['cmake', 'meson']) -> str:
         self.packagename = packagename
         self.directory = packagename
         self.wrap = self.wraps.get(packagename)
