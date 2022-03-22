@@ -1,0 +1,9 @@
+project('cargo project workspace', 'rust')
+
+rust = import('unstable-rust')
+
+sub = rust.cargo('sub')
+
+exe = executable('main', 'main.rs', dependencies : sub.get_variable('dep'))
+
+test('main', exe)
