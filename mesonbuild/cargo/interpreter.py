@@ -80,8 +80,8 @@ class Package:
     workspace: T.Optional[str] = None
     build: T.Optional[str] = None
     links: T.Optional[str] = None
-    excludes: T.List[str] = dataclasses.field(default_factory=list)
-    includes: T.List[str] = dataclasses.field(default_factory=list)
+    exclude: T.List[str] = dataclasses.field(default_factory=list)
+    include: T.List[str] = dataclasses.field(default_factory=list)
     publish: bool = True
     metadata: T.Dict[str, T.Dict[str, str]] = dataclasses.field(default_factory=dict)
     default_run: T.Optional[str] = None
@@ -249,13 +249,18 @@ def _create_project(package: Package, build: builder.Builder, env: Environment) 
 
 
 def _convert_manifest(raw_manifest: manifest.Manifest, subdir: str, path: str = '') -> Manifest:
+    # We need to set the name field if it's not set manually,
+    # including if oether fields are set in the lib section
+    lib = _fixup_keys(raw_manifest.get('lib', {}))
+    lib.setdefault('name', raw_manifest['package']['name'])
+
     return Manifest(
         Package(**_fixup_keys(raw_manifest['package'])),
         {k: Dependency.from_raw(v) for k, v in raw_manifest.get('dependencies', {}).items()},
         {k: Dependency.from_raw(v) for k, v in raw_manifest.get('dev-dependencies', {}).items()},
         {k: Dependency.from_raw(v) for k, v in raw_manifest.get('build-dependencies',{}).items()},
         # XXX: is this default name right?
-        Library(**_fixup_keys(raw_manifest.get('lib', {'name': raw_manifest['package']['name']}))),
+        Library(**lib),
         [Binary(**_fixup_keys(b)) for b in raw_manifest.get('bin', {})],
         [Test(**_fixup_keys(b)) for b in raw_manifest.get('test', {})],
         [Benchmark(**_fixup_keys(b)) for b in raw_manifest.get('bench', {})],

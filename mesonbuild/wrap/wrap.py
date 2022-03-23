@@ -422,7 +422,7 @@ class Resolver:
         self.wrap = self.wraps.get(packagename)
 
         if method == 'cargo':
-            assert cargo_projects and packagename in cargo_projects, 'this shouldnt happen'
+            assert cargo_projects and packagename in cargo_projects, packagename
             prog = cargo_projects[packagename]
             self.directory = os.path.join(prog.subdir, prog.path)
             self.dirname = self.directory
