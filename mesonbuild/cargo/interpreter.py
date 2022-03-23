@@ -206,6 +206,15 @@ class Manifest:
 
     :param subdir: the subdirectory that this cargo project is in
     :param path: the path within the cargo subproject.
+    :param default_features:
+        The default features split out of the features dict
+    :param wants_defaults:
+        If this subproject has been requested with or without defaults.
+        Due to the way cargo works, we assume defaults unless it is explicitly
+        asked to not have defaults. But if *any* subproject asks for defaults
+        then they all get them
+    :param enabled_features:
+        A list of all enabled features, except the default features
     """
 
     package: Package
@@ -219,8 +228,12 @@ class Manifest:
     example: T.List[Example]
     features: T.Dict[str, T.List[str]]
     target: T.Dict[str, T.Dict[str, Dependency]]
+
     subdir: str
     path: str = ''
+    default_features: T.List[str] = dataclasses.field(default_factory=list)
+    wants_defaults: T.Optional[bool] = dataclasses.field(default=None, init=False)
+    enabled_features: T.List[str] = dataclasses.field(default_factory=list, init=False)
 
 
 def _create_project(package: Package, build: builder.Builder, env: Environment) -> mparser.FunctionNode:
@@ -254,6 +267,11 @@ def _convert_manifest(raw_manifest: manifest.Manifest, subdir: str, path: str = 
     lib = _fixup_keys(raw_manifest.get('lib', {}))
     lib.setdefault('name', raw_manifest['package']['name'])
 
+    # Remove default options from the features set (if any), and store them
+    # separately
+    features = raw_manifest.get('features', {}).copy()
+    defaults = features.pop('default', [])
+
     return Manifest(
         Package(**_fixup_keys(raw_manifest['package'])),
         {k: Dependency.from_raw(v) for k, v in raw_manifest.get('dependencies', {}).items()},
@@ -265,11 +283,12 @@ def _convert_manifest(raw_manifest: manifest.Manifest, subdir: str, path: str = 
         [Test(**_fixup_keys(b)) for b in raw_manifest.get('test', {})],
         [Benchmark(**_fixup_keys(b)) for b in raw_manifest.get('bench', {})],
         [Example(**_fixup_keys(b)) for b in raw_manifest.get('example', {})],
-        raw_manifest.get('features', {}),
+        features,
         {k: {k2: Dependency.from_raw(v2) for k2, v2 in v['dependencies'].items()}
-        for k, v in raw_manifest.get('target', {}).items()},
-        subdir,
-        path,
+         for k, v in raw_manifest.get('target', {}).items()},
+        subdir=subdir,
+        path=path,
+        default_features=defaults,
     )
 
 
