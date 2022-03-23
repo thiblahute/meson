@@ -275,7 +275,8 @@ class RustModule(ExtensionModule):
         # We need to do this because a cargo workspace can contain
         # multiple subprojects
         if not self.interpreter.cargo_subprojects:
-            self.interpreter.cargo_subprojects = load_all_manifests(self.interpreter.subproject_dir)
+            self.interpreter.cargo_subprojects = load_all_manifests(
+                os.path.join(self.interpreter.source_root, self.interpreter.subproject_dir))
         kw: _kwargs.DoSubproject = {
             'required': kwargs['required'],
             'cmake_options': [],
