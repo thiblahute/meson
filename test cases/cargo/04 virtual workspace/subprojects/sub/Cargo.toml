@@ -1,0 +1,2 @@
+[workspace]
+members = ['subsub', 'sub2']
