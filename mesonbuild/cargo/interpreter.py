@@ -92,6 +92,24 @@ class Package:
 
 
 @dataclasses.dataclass
+class SystemDependency:
+    name: T.Optional[str]
+    version: T.Optional[T.List[str]] = None
+    features: T.Dict[str, T.Dict[str, str]] = dataclasses.field(default_factory=dict)
+
+    @classmethod
+    def from_raw(cls, k: str, raw: manifest.DependencyV) -> Dependency:
+        """Create a dependency from a raw cargo dictionary"""
+        fixed = _fixup_keys(raw)
+        fixed = {
+            'name': raw.get('name', k),
+            'version': version.convert(fixed['version']),
+            'features': {k: v for k, v in fixed.items() if k not in ['name', 'version']}
+        }
+
+        return cls(**fixed)
+
+@dataclasses.dataclass
 class Dependency:
 
     """Representation of a Cargo Dependency Entry."""
@@ -221,6 +239,7 @@ class Manifest:
     dependencies: T.Dict[str, Dependency]
     dev_dependencies: T.Dict[str, Dependency]
     build_dependencies: T.Dict[str, Dependency]
+    system_dependencies: T.Dict[str, SystemDependency]
     lib: Library
     bin: T.List[Binary]
     test: T.List[Test]
@@ -274,9 +293,11 @@ def _convert_manifest(raw_manifest: manifest.Manifest, subdir: str, path: str = 
 
     return Manifest(
         Package(**_fixup_keys(raw_manifest['package'])),
+
         {k: Dependency.from_raw(v) for k, v in raw_manifest.get('dependencies', {}).items()},
         {k: Dependency.from_raw(v) for k, v in raw_manifest.get('dev-dependencies', {}).items()},
         {k: Dependency.from_raw(v) for k, v in raw_manifest.get('build-dependencies',{}).items()},
+        {k: SystemDependency.from_raw(k, d) for k, d in raw_manifest['package'].get('metadata', {}).get('system-deps', {}).items()},
         # XXX: is this default name right?
         Library(**lib),
         [Binary(**_fixup_keys(b)) for b in raw_manifest.get('bin', {})],
@@ -348,10 +369,15 @@ def load_all_manifests(subproject_dir: str) -> T.Dict[str, Manifest]:
 
 def _create_lib(cargo: Manifest, build: builder.Builder) -> T.List[mparser.BaseNode]:
     kw: T.Dict[str, mparser.BaseNode] = {}
+    dependencies = []
     if cargo.dependencies:
         ids = [build.identifier(f'dep_{n}') for n in cargo.dependencies]
-        kw['dependencies'] = build.array(
-            [build.method('get_variable', i, [build.string('dep')]) for i in ids])
+        dependencies += [build.method('get_variable', i, [build.string('dep')]) for i in ids]
+
+    if cargo.system_dependencies:
+        dependencies += [build.identifier(f'dep_{n}') for n in cargo.system_dependencies]
+
+    kw['dependencies'] = build.array(dependencies)
 
     # FIXME: currently assuming that an rlib is being generated, which is
     # the most common.
@@ -398,6 +424,24 @@ def interpret(cargo: Manifest, env: Environment) -> mparser.CodeBlockNode:
                         'cargo',
                         build.identifier('rust'),
                         [build.string(name)],
+                        kw,
+                    ),
+                    f'dep_{name}',
+                ),
+            ])
+
+    if cargo.system_dependencies:
+        for name, dep in cargo.system_dependencies.items():
+            kw = {}
+            if dep.version is not None:
+                kw |= {
+                    'version': build.array([build.string(s) for s in dep.version]),
+                }
+            ast.extend([
+                build.assign(
+                    build.function(
+                        'dependency',
+                        [build.string(dep.name)],
                         kw,
                     ),
                     f'dep_{name}',
