@@ -19,12 +19,12 @@ import typing as T
 
 from . import ExtensionModule, ModuleReturnValue, ModuleInfo
 from .. import mlog
-from ..build import BothLibraries, BuildTarget, CustomTargetIndex, Executable, ExtractedObjects, GeneratedList, IncludeDirs, CustomTarget, StructuredSources
+from ..build import BothLibraries, BuildTarget, CustomTargetIndex, Executable, ExtractedObjects, FeatureNew, GeneratedList, IncludeDirs, CustomTarget, StructuredSources
 from ..cargo.interpreter import load_all_manifests
 from ..compilers.compilers import are_asserts_disabled
 from ..dependencies import Dependency, ExternalLibrary
-from ..interpreter.type_checking import DEPENDENCIES_KW, TEST_KWS, OUTPUT_KW, INCLUDE_DIRECTORIES
-from ..interpreterbase import ContainerTypeInfo, InterpreterException, KwargInfo, typed_kwargs, typed_pos_args, noPosargs
+from ..interpreter.type_checking import DEPENDENCIES_KW, TEST_KWS, OUTPUT_KW, INCLUDE_DIRECTORIES, DISABLER_KW, REQUIRED_KW
+from ..interpreterbase import ContainerTypeInfo, InterpreterException, KwargInfo, disablerIfNotFound, typed_kwargs, typed_pos_args, noPosargs
 from ..mesonlib import File
 
 if T.TYPE_CHECKING:
