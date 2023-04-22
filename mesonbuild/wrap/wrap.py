@@ -419,14 +419,18 @@ class Resolver:
         """
         self.packagename = packagename
         self.directory = packagename
-        self.wrap = self.wraps.get(packagename)
 
+        existing_cargo_subproject = False
         if method == 'cargo':
-            assert cargo_projects and packagename in cargo_projects, packagename
-            prog = cargo_projects[packagename]
-            self.directory = os.path.join(prog.subdir, prog.path)
-            self.dirname = self.directory
-        else:
+            if cargo_projects and packagename in cargo_projects:
+                existing_cargo_subproject = True
+                prog = cargo_projects[packagename]
+                self.directory = os.path.join(prog.subdir, prog.path)
+                self.dirname = self.directory
+                self.wrap = None
+
+        if not existing_cargo_subproject:
+            self.wrap = self.wraps.get(packagename)
             if not self.wrap:
                 self.wrap = self.get_from_wrapdb(packagename)
             if not self.wrap:
@@ -434,58 +438,30 @@ class Resolver:
                 raise WrapNotFoundException(m)
             self.directory = self.wrap.directory
 
-            if self.wrap.has_wrap:
-                # We have a .wrap file, use directory relative to the location of
-                # the wrap file if it exists, otherwise source code will be placed
-                # into main project's subproject_dir even if the wrap file comes
-                # from another subproject.
-                if method != 'cargo':
-                    self.dirname = os.path.join(os.path.dirname(self.wrap.filename), self.wrap.directory)
-                if not os.path.exists(self.dirname):
-                    self.dirname = os.path.join(self.subdir_root, self.directory)
-                # Check if the wrap comes from the main project.
-                main_fname = os.path.join(self.subdir_root, self.wrap.basename)
-                if self.wrap.filename != main_fname:
-                    rel = os.path.relpath(self.wrap.filename, self.source_dir)
-                    mlog.log('Using', mlog.bold(rel))
-                    # Write a dummy wrap file in main project that redirect to the
-                    # wrap we picked.
-                    with open(main_fname, 'w', encoding='utf-8') as f:
-                        f.write(textwrap.dedent(f'''\
-                            [wrap-redirect]
-                            filename = {PurePath(os.path.relpath(self.wrap.filename, self.subdir_root)).as_posix()}
-                            '''))
-            else:
-                self.wrap = self.wraps.get(packagename)
-                if not self.wrap:
-                    m = f'Neither a subproject directory nor a {self.packagename}.wrap file was found.'
-                    raise WrapNotFoundException(m)
-                if method != 'cargo':
-                    self.directory = self.wrap.directory
-
-                if self.wrap.has_wrap:
-                    # We have a .wrap file, source code will be placed into main
-                    # project's subproject_dir even if the wrap file comes from another
-                    # subproject.
-                    self.dirname = os.path.join(self.subdir_root, self.directory)
-                    # Check if the wrap comes from the main project.
-                    main_fname = os.path.join(self.subdir_root, self.wrap.basename)
-                    if self.wrap.filename != main_fname:
-                        rel = os.path.relpath(self.wrap.filename, self.source_dir)
-                        mlog.log('Using', mlog.bold(rel))
-                        # Write a dummy wrap file in main project that redirect to the
-                        # wrap we picked.
-                        with open(main_fname, 'w', encoding='utf-8') as f:
-                            f.write(textwrap.dedent('''\
-                                [wrap-redirect]
-                                filename = {}
-                                '''.format(os.path.relpath(self.wrap.filename, self.subdir_root))))
-                else:
-                    # No wrap file, it's a dummy package definition for an existing
-                    # directory. Use the source code in place.
-                    if method != 'cargo':
-                        self.dirname = self.wrap.filename
-
+        if not existing_cargo_subproject and self.wrap.has_wrap:
+            # We have a .wrap file, use directory relative to the location of
+            # the wrap file if it exists, otherwise source code will be placed
+            # into main project's subproject_dir even if the wrap file comes
+            # from another subproject.
+            self.dirname = os.path.join(os.path.dirname(self.wrap.filename), self.wrap.directory)
+            if not os.path.exists(self.dirname):
+                self.dirname = os.path.join(self.subdir_root, self.directory)
+            # Check if the wrap comes from the main project.
+            main_fname = os.path.join(self.subdir_root, self.wrap.basename)
+            if self.wrap.filename != main_fname:
+                rel = os.path.relpath(self.wrap.filename, self.source_dir)
+                mlog.log('Using', mlog.bold(rel))
+                # Write a dummy wrap file in main project that redirect to the
+                # wrap we picked.
+                with open(main_fname, 'w', encoding='utf-8') as f:
+                    f.write(textwrap.dedent(f'''\
+                        [wrap-redirect]
+                        filename = {PurePath(os.path.relpath(self.wrap.filename, self.subdir_root)).as_posix()}
+                        '''))
+        elif not existing_cargo_subproject:
+            # No wrap file, it's a dummy package definition for an existing
+            # directory. Use the source code in place.
+            self.dirname = self.wrap.filename
         rel_path = os.path.relpath(self.dirname, self.source_dir)
 
         if method == 'meson':
@@ -528,7 +504,7 @@ class Resolver:
                 windows_proof_rmtree(self.dirname)
                 raise
 
-        # A meson.build or CMakeLists.txt file is required in the directory
+        # A meson.build, CMakeLists.txt or Cargo.toml file is required in the directory
         if not os.path.exists(buildfile):
             raise WrapException(f'Subproject exists but has no {os.path.basename(buildfile)} file')
 
