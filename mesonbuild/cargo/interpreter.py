@@ -294,7 +294,7 @@ def _convert_manifest(raw_manifest: manifest.Manifest, subdir: str, path: str = 
 
 def _load_manifests(subdir: str) -> T.Dict[str, Manifest]:
     filename = os.path.join(subdir, 'Cargo.toml')
-    with open(filename, 'r') as f:
+    with open(filename, 'rb') as f:
         raw = tomllib.load(f)
 
     manifests: T.Dict[str, Manifest] = {}
@@ -323,7 +323,7 @@ def _load_manifests(subdir: str) -> T.Dict[str, Manifest]:
 
         for m in members:
             filename = os.path.join(subdir, m, 'Cargo.toml')
-            with open(filename, 'r') as f:
+            with open(filename, 'rb') as f:
                 raw = tomllib.load(f)
 
             raw_manifest = T.cast('manifest.Manifest', raw)
