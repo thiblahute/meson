@@ -420,7 +420,7 @@ class Resolver:
         return None
 
     def resolve(self, packagename: str, method: Literal['cmake', 'meson', 'cargo'],
-                cargo_projects: T.Optional[T.Dict[str, Manifest]] = None) -> str:
+                cargo_projects: T.Optional[T.Dict[str, Manifest]] = None) -> T.Tuple(str, str):
         """Resolve a package name to a subproject
 
         :param packagename: The name of the subproject
@@ -428,7 +428,8 @@ class Resolver:
         :param cargo_projects: cargo subproject mapping, defaults to None
         :raises WrapNotFoundException:
             If no wrap can be found, either as a subproject or as a wrap file
-        :return: A path to the root file, depending on the method
+        :return: A path to the root file, depending on the method as well as the
+                 method to use to execute the subproject
         """
         self.packagename = packagename
         self.directory = packagename
@@ -482,14 +483,22 @@ class Resolver:
         elif method == 'cmake':
             buildfile = os.path.join(self.dirname, 'CMakeLists.txt')
         elif method == 'cargo':
-            buildfile = os.path.join(self.dirname, 'Cargo.toml')
+            # We default to using `meson` method if we find build definition but the user
+            # can force building with cargo by setting `method = 'cargo` in the wrap file.
+            if method == 'cargo' and os.path.exists(os.path.join(self.dirname, 'meson.build')) \
+                    and not self.wrap.cargo_values.get('method') == 'cargo':
+                mlog.log(f'Cargo subproject also has meson build dep, using that instead of Cargo.toml')
+                buildfile = os.path.join(self.dirname, 'meson.build')
+                method = 'meson'
+            else:
+                buildfile = os.path.join(self.dirname, 'Cargo.toml')
         else:
             raise WrapException('Only the methods "meson" and "cmake" are supported')
 
         # The directory is there and has meson.build? Great, use it.
         if os.path.exists(buildfile):
             self.validate()
-            return rel_path
+            return (rel_path, method)
 
         # Check if the subproject is a git submodule
         self.resolve_git_submodule()
@@ -517,7 +526,13 @@ class Resolver:
                 windows_proof_rmtree(self.dirname)
                 raise
 
-        # A meson.build, CMakeLists.txt or Cargo.toml file is required in the directory
+        if method == 'cargo' and not existing_cargo_subproject:
+            cargo_projects |= load_all_manifests(Path(self.dirname).parent)
+
+            # Recurse now that we downloaded the subproject and updated our list
+            # of manifests
+            return (self.resolve(packagename, method, cargo_projects), method)
+
         if not os.path.exists(buildfile):
             raise WrapException(f'Subproject exists but has no {os.path.basename(buildfile)} file')
 
@@ -527,7 +542,7 @@ class Resolver:
         if method != 'cargo':
             self.wrap.update_hash_cache(self.dirname)
 
-        return rel_path
+        return (rel_path, method)
 
     def check_can_download(self) -> None:
         # Don't download subproject data based on wrap file if requested.

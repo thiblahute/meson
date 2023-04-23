@@ -924,7 +924,7 @@ class Interpreter(InterpreterBase, HoldableObject):
 
         r = self.environment.wrap_resolver
         try:
-            subdir = r.resolve(subp_name, method, self.cargo_subprojects)
+            (subdir, method) = r.resolve(subp_name, method, self.cargo_subprojects)
         except wrap.WrapException as e:
             if not required:
                 mlog.log(e)
