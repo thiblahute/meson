@@ -1077,8 +1077,13 @@ class Interpreter(InterpreterBase, HoldableObject):
         with mlog.nested(subp_name):
 
             # Generate a meson ast and execute it with the normal do_subproject_meson
-            ast = interpret(self.cargo_subprojects[subp_name], self.environment)
+            wrap = self.environment.wrap_resolver.wrap
+            if wrap:
+                crate_name = wrap.cargo_values.get('name', subp_name)
+            else:
+                crate_name = subp_name
 
+            ast = interpret(self.cargo_subprojects[crate_name], self.environment)
             mlog.log()
             with mlog.nested('cargo-ast'):
                 mlog.log('Processing generated meson AST')

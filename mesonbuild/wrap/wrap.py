@@ -14,6 +14,8 @@
 from __future__ import annotations
 
 from __future__ import annotations
+
+from mesonbuild.cargo.interpreter import load_all_manifests
 from .. import mlog
 import contextlib
 from dataclasses import dataclass
@@ -202,6 +204,7 @@ class PackageDefinition:
             self.redirected = True
         else:
             self.parse_provide_section(config)
+            self.parse_cargo_section(config)
         if 'patch_directory' in self.values:
             FeatureNew('Wrap files with patch_directory', '0.55.0').use(self.subproject)
         for what in ['patch', 'source']:
@@ -247,6 +250,16 @@ class PackageDefinition:
                          'it can be added in the "dependency_names" special key.')
                     raise WrapException(m)
                 self.provided_deps[k] = v
+
+    def parse_cargo_section(self, config: configparser.ConfigParser) -> None:
+        if not config.has_section('cargo'):
+            self.cargo_values = {}
+        else:
+            self.cargo_values = dict(config['cargo'])
+        if not config.has_section('cargo.crates-map'):
+            self.cargo_crates_map = {}
+        else:
+            self.cargo_crates_map = dict(config['cargo.crates-map'])
 
     def get(self, key: str) -> str:
         try:

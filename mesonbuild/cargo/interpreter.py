@@ -27,6 +27,7 @@ if T.TYPE_CHECKING:
 
     from . import manifest
     from ..environment import Environment
+    from ..wrap import PackageDefinition
 
 # tomllib is present in python 3.11, before that it is a pypi module called tomli,
 # we try to import tomllib, then tomli,
@@ -376,13 +377,17 @@ def load_all_manifests(subproject_dir: str) -> T.Dict[str, Manifest]:
             manifests.update(_load_manifests(str(p)))
     return manifests
 
+def _lookup_dependency_name(name: str, wrap: T.Optional[PackageDefinition]) -> str:
+    if wrap and wrap.cargo_crates_map:
+        return wrap.cargo_crates_map.get(name, name)
+    return name
 
-def _create_lib(cargo: Manifest, build: builder.Builder) -> T.List[mparser.BaseNode]:
+
+def _create_lib(cargo: Manifest, build: builder.Builder, env: Environment) -> T.List[mparser.BaseNode]:
     kw: T.Dict[str, mparser.BaseNode] = {}
     dependencies = []
     if cargo.dependencies:
-        ids = [build.identifier(f'dep_{n}') for n in cargo.dependencies]
-        dependencies += [build.method('get_variable', i, [build.string('dep')]) for i in ids]
+        dependencies += [build.function('dependency', pos=[build.string(_lookup_dependency_name(n, env.wrap_resolver.wrap))]) for n in cargo.dependencies]
 
     if cargo.system_dependencies:
         dependencies += [build.identifier(f'dep_{n}') for n in cargo.system_dependencies]
@@ -410,9 +415,14 @@ def _create_lib(cargo: Manifest, build: builder.Builder) -> T.List[mparser.BaseN
                 kw={'link_with': build.identifier('lib')} | kw,
             ),
             'dep'
+        ),
+
+
+        build.method(
+            'override_dependency', build.identifier('meson'),
+            pos=[build.string(_lookup_dependency_name(cargo.package.name, env.wrap_resolver.wrap)), build.identifier('dep')],
         )
     ]
-
 
 def interpret(cargo: Manifest, env: Environment) -> mparser.CodeBlockNode:
     filename = os.path.join(cargo.subdir, cargo.path, 'Cargo.toml')
@@ -433,7 +443,7 @@ def interpret(cargo: Manifest, env: Environment) -> mparser.CodeBlockNode:
                     build.method(
                         'cargo',
                         build.identifier('rust'),
-                        [build.string(name)],
+                        [build.string(_lookup_dependency_name(name, env.wrap_resolver.wrap))],
                         kw,
                     ),
                     f'dep_{fixup_meson_varname(name)}',
@@ -461,7 +471,7 @@ def interpret(cargo: Manifest, env: Environment) -> mparser.CodeBlockNode:
     # Libs are always auto-discovered and there's no other way to handle them,
     # which is unfortunate for reproducability
     if os.path.exists(os.path.join(env.source_dir, cargo.subdir, cargo.path, 'src', 'lib.rs')):
-        ast.extend(_create_lib(cargo, build))
+        ast.extend(_create_lib(cargo, build, env))
 
     # XXX: make this not awful
     block = builder.block(filename)
