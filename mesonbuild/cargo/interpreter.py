@@ -404,7 +404,7 @@ def _create_lib(cargo: Manifest, build: builder.Builder, env: Environment) -> T.
                     build.string(fixup_meson_varname(cargo.package.name)),
                     build.string(os.path.join('src', 'lib.rs')),
                 ],
-                kw,
+                kw | {'pic': build.bool(True)},
             ),
             'lib'
         ),
