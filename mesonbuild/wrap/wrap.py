@@ -441,6 +441,12 @@ class Resolver:
         self.packagename = packagename
         self.directory = packagename
 
+        self.wrap = self.wraps.get(packagename)
+        if self.wrap and self.wrap.has_wrap:
+            method = self.wrap.values.get('method', method)
+            if method == 'cargo' and not cargo_projects:
+                cargo_projects |= load_all_manifests(Path(self.wrap.filename).parent)
+
         existing_cargo_subproject = False
         if method == 'cargo':
             if cargo_projects and packagename in cargo_projects:
@@ -451,7 +457,6 @@ class Resolver:
                 self.wrap = None
 
         if not existing_cargo_subproject:
-            self.wrap = self.wraps.get(packagename)
             if not self.wrap:
                 self.wrap = self.get_from_wrapdb(packagename)
             if not self.wrap:
