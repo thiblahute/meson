@@ -260,6 +260,13 @@ class PackageDefinition:
             self.cargo_crates_map = {}
         else:
             self.cargo_crates_map = dict(config['cargo.crates-map'])
+        if 'name' in self.cargo_values:
+            self.cargo_crates_map[self.cargo_values['name']] = self.name
+
+        if not config.has_section('cargo.dependency-map'):
+            self.cargo_dependency_map = {}
+        else:
+            self.cargo_dependency_map = dict(config['cargo.dependency-map'])
 
     def get(self, key: str) -> str:
         try:

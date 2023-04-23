@@ -66,6 +66,18 @@ def array(value: T.List[mparser.BaseNode], filename: str) -> mparser.ArrayNode:
     args.arguments = value
     return mparser.ArrayNode(args, -1, -1, -1, -1)
 
+def _dict(value: T.Dict[mparser.BaseNode: mparser.BaseNode], filename: str) -> mparser.ArrayNode:
+    """Build an Array Node
+
+    :param value: A dictionnary
+    :param filename: The file the dict is from
+    :return: An ArrayNode built from the arguments
+    """
+    args = mparser.ArgumentNode(_token('dict', filename, 'what goes here?'))
+    for (key, val) in value.items():
+        args.set_kwarg_no_check(key, val)
+    return mparser.DictNode(args, -1, -1, -1, -1)
+
 
 def identifier(value: str, filename: str) -> mparser.IdNode:
     """Build A IdNode
@@ -212,6 +224,15 @@ class Builder:
         :return: An ArrayNode built from the arguments
         """
         return array(value, self.filename)
+
+
+    def dict(self, value: T.Dict[mparser.BaseNode]) -> mparser.ArrayNode:
+        """Build an Array Node
+
+        :param value: A list of nodes to insert into the array
+        :return: An ArrayNode built from the arguments
+        """
+        return _dict(value, self.filename)
 
 
     def identifier(self, value: str) -> mparser.IdNode:

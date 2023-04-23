@@ -386,8 +386,17 @@ def _lookup_dependency_name(name: str, wrap: T.Optional[PackageDefinition]) -> s
 def _create_lib(cargo: Manifest, build: builder.Builder, env: Environment) -> T.List[mparser.BaseNode]:
     kw: T.Dict[str, mparser.BaseNode] = {}
     dependencies = []
+    depmap = {}
     if cargo.dependencies:
-        dependencies += [build.function('dependency', pos=[build.string(_lookup_dependency_name(n, env.wrap_resolver.wrap))]) for n in cargo.dependencies]
+        for name, dependency in cargo.dependencies.items():
+            dependencies += [build.function('dependency', pos=[build.string(_lookup_dependency_name(name, env.wrap_resolver.wrap))]) ]
+            if name != dependency.package and dependency.package:
+                depmap[dependency.package.replace('-', '_')] = name
+    dependency_map = {}
+    if depmap:
+        dependency_map = {
+            'rust_dependency_map': build.dict({build.string(k): build.string(v) for k, v in depmap.items()})
+        }
 
     if cargo.system_dependencies:
         dependencies += [build.identifier(f'dep_{n}') for n in cargo.system_dependencies]
@@ -404,7 +413,7 @@ def _create_lib(cargo: Manifest, build: builder.Builder, env: Environment) -> T.
                     build.string(fixup_meson_varname(cargo.package.name)),
                     build.string(os.path.join('src', 'lib.rs')),
                 ],
-                kw | {'pic': build.bool(True)},
+                kw | {'pic': build.bool(True)} | dependency_map,
             ),
             'lib'
         ),
