@@ -74,6 +74,7 @@ class Package:
     name: str
     version: str
     description: str
+    resolver: T.Optional[str] = None
     authors: T.List[str] = dataclasses.field(default_factory=list)
     edition: manifest.EDITION = '2015'
     rust_version: T.Optional[str] = None
@@ -181,6 +182,7 @@ class Library(BuildTarget):
     doc: bool = True
     proc_macro: bool = False
     crate_type: manifest.CRATE_TYPE = 'lib'
+    doc_scrape_examples: bool = True
     plugin: bool = False
 
 
