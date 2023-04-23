@@ -38,6 +38,14 @@ for t in ['tomllib', 'tomli']:
     except ImportError:
         pass
 
+def fixup_meson_varname(name: str) -> str:
+    """Fixup a meson variable name
+
+    :param name: The name to fix
+    :return: the fixed name
+    """
+    return name.replace('-', '_')
+
 @T.overload
 def _fixup_keys(d: manifest.BuildTarget) -> manifest.FixedBuildTarget: ...
 
@@ -386,7 +394,7 @@ def _create_lib(cargo: Manifest, build: builder.Builder) -> T.List[mparser.BaseN
             build.function(
                 'static_library',
                 [
-                    build.string(cargo.package.name),
+                    build.string(fixup_meson_varname(cargo.package.name)),
                     build.string(os.path.join('src', 'lib.rs')),
                 ],
                 kw,
@@ -426,7 +434,7 @@ def interpret(cargo: Manifest, env: Environment) -> mparser.CodeBlockNode:
                         [build.string(name)],
                         kw,
                     ),
-                    f'dep_{name}',
+                    f'dep_{fixup_meson_varname(name)}',
                 ),
             ])
 
