@@ -495,17 +495,9 @@ class Resolver:
         elif method == 'cmake':
             buildfile = os.path.join(self.dirname, 'CMakeLists.txt')
         elif method == 'cargo':
-            # We default to using `meson` method if we find build definition but the user
-            # can force building with cargo by setting `method = 'cargo` in the wrap file.
-            if method == 'cargo' and os.path.exists(os.path.join(self.dirname, 'meson.build')) \
-                    and not self.wrap.cargo_values.get('method') == 'cargo':
-                mlog.log(f'Cargo subproject also has meson build dep, using that instead of Cargo.toml')
-                buildfile = os.path.join(self.dirname, 'meson.build')
-                method = 'meson'
-            else:
-                buildfile = os.path.join(self.dirname, 'Cargo.toml')
+            buildfile = os.path.join(self.dirname, 'Cargo.toml')
         else:
-            raise WrapException('Only the methods "meson" and "cmake" are supported')
+            raise WrapException(f'Only the methods "meson", "cargo and "cmake" are supported, found {method}')
 
         # The directory is there and has meson.build? Great, use it.
         if os.path.exists(buildfile):
