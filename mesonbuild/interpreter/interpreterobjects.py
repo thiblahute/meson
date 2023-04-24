@@ -731,7 +731,8 @@ class SubprojectHolder(MesonInterpreterObject):
                  subdir: str,
                  warnings: int = 0,
                  disabled_feature: T.Optional[str] = None,
-                 exception: T.Optional[Exception] = None) -> None:
+                 exception: T.Optional[Exception] = None,
+                 execution_method: str = 'meson') -> None:
         super().__init__()
         self.held_object = subinterpreter
         self.warnings = warnings
@@ -742,6 +743,7 @@ class SubprojectHolder(MesonInterpreterObject):
         self.methods.update({'get_variable': self.get_variable_method,
                              'found': self.found_method,
                              })
+        self.execution_method = execution_method
 
     @noPosargs
     @noKwargs

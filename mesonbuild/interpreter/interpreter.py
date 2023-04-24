@@ -1059,6 +1059,7 @@ class Interpreter(InterpreterBase, HoldableObject):
                         InterpreterRuleRelaxation.ALLOW_BUILD_DIR_FILE_REFERENCES,
                     }
             )
+            result.execution_method = 'cmake'
             result.cm_interpreter = cm_int
 
         mlog.log()
@@ -1072,7 +1073,7 @@ class Interpreter(InterpreterBase, HoldableObject):
             if kwargs['required']:
                 raise mesonlib.MesonException(msg)
             mlog.debug(msg)
-            return SubprojectHolder(NullSubprojectInterpreter(), subdir)
+            return SubprojectHolder(NullSubprojectInterpreter(), subdir, execution_method='cargo')
 
         with mlog.nested(subp_name):
 
@@ -1105,6 +1106,7 @@ class Interpreter(InterpreterBase, HoldableObject):
             result = self._do_subproject_meson(
                 subp_name, subdir, default_options, kwargs, ast,
                 [os.path.join(subdir, 'Cargo.toml')], is_translated=True)
+            result.execution_method = 'cargo'
 
         mlog.log()
         return result
@@ -1428,6 +1430,10 @@ class Interpreter(InterpreterBase, HoldableObject):
                 value = [value, str(subp.exception)]
             elif subp.warnings > 0:
                 value = [value, f'{subp.warnings} warnings']
+
+            if subp.execution_method != 'meson':
+                value = [value, f'(method: {subp.execution_method})']
+
             all_subprojects[name] = value
         if all_subprojects:
             self.summary_impl('Subprojects', all_subprojects,
