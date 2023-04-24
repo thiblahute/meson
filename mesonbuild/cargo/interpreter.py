@@ -403,6 +403,11 @@ def _create_lib(cargo: Manifest, build: builder.Builder, env: Environment) -> T.
 
     kw['dependencies'] = build.array(dependencies)
 
+    # FIXME: Add support for nostd and disabling default features
+    rust_args = [build.string('--cfg'), build.string(f'feature="default"')]
+    rust_args += [build.string('--cfg'), build.string(f'feature="std"')]
+    rust_args += [build.string('--cfg'), build.string(f'feature="alloc"')]
+
     # FIXME: currently assuming that an rlib is being generated, which is
     # the most common.
     return [
@@ -413,7 +418,10 @@ def _create_lib(cargo: Manifest, build: builder.Builder, env: Environment) -> T.
                     build.string(fixup_meson_varname(cargo.package.name)),
                     build.string(os.path.join('src', 'lib.rs')),
                 ],
-                kw | {'pic': build.bool(True)} | dependency_map,
+                kw | {'pic': build.bool(True)} | dependency_map |
+                {
+                    'rust_args': build.array(rust_args),
+                },
             ),
             'lib'
         ),
