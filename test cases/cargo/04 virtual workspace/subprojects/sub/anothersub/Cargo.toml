@@ -1,0 +1,8 @@
+[package]
+name = 'anothersub'
+version = '0.1.1'
+edition = '2021'
+description = 'a project'
+
+[dependencies]
+sub2 = {version = ">= 0.2", path = "../sub2"}

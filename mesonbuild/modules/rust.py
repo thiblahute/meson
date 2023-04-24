@@ -271,12 +271,6 @@ class RustModule(ExtensionModule):
         ),
     )
     def cargo(self, state: 'ModuleState', args: T.Tuple[str], kwargs: FuncCargo) -> Dependency:
-        # Load cargo manifests on the first cargo subproject call
-        # We need to do this because a cargo workspace can contain
-        # multiple subprojects
-        if not self.interpreter.cargo_subprojects:
-            self.interpreter.cargo_subprojects = load_all_manifests(
-                os.path.join(self.interpreter.source_root, self.interpreter.subproject_dir))
         kw: _kwargs.DoSubproject = {
             'required': kwargs['required'],
             'cmake_options': [],
@@ -288,4 +282,10 @@ class RustModule(ExtensionModule):
 
 
 def initialize(interp: Interpreter) -> RustModule:
+    # Load cargo manifests when starting to use the rust module.
+    # We need to do this because a cargo workspace can contain
+    # multiple subprojects
+    if not interp.environment.wrap_resolver.cargo_subprojects:
+        interp.environment.wrap_resolver.cargo_subprojects = load_all_manifests(
+            os.path.join(interp.source_root, interp.subproject_dir))
     return RustModule(interp)

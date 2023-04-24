@@ -1,2 +1,2 @@
 [workspace]
-members = ['subsub', 'sub2']
+members = ['sub2', 'subsub', 'anothersub']

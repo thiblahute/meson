@@ -317,6 +317,7 @@ class Resolver:
         self.wrapdb: T.Dict[str, T.Any] = {}
         self.wrapdb_provided_deps: T.Dict[str, str] = {}
         self.wrapdb_provided_programs: T.Dict[str, str] = {}
+        self.cargo_subprojects: T.Dict[str, Manifest] = {}
         self.load_wraps()
         self.load_netrc()
         self.load_wrapdb()
@@ -408,9 +409,13 @@ class Resolver:
         wrap = self.provided_deps.get(packagename)
         if wrap:
             dep_var = wrap.provided_deps.get(packagename)
-            return wrap.name, dep_var
+            return wrap.name, dep_var, 'meson'
+
+        if packagename in self.cargo_subprojects:
+            return packagename, f'{packagename}_dep', 'cargo'
+
         wrap_name = self.wrapdb_provided_deps.get(packagename)
-        return wrap_name, None
+        return wrap_name, None, 'meson'
 
     def get_varname(self, subp_name: str, depname: str) -> T.Optional[str]:
         wrap = self.wraps.get(subp_name)
@@ -426,13 +431,11 @@ class Resolver:
                 return wrap_name
         return None
 
-    def resolve(self, packagename: str, method: Literal['cmake', 'meson', 'cargo'],
-                cargo_projects: T.Optional[T.Dict[str, Manifest]] = None) -> T.Tuple(str, str):
+    def resolve(self, packagename: str, method: Literal['cmake', 'meson', 'cargo']) -> T.Tuple(str, str):
         """Resolve a package name to a subproject
 
         :param packagename: The name of the subproject
         :param method: the method to resolve the wrap
-        :param cargo_projects: cargo subproject mapping, defaults to None
         :raises WrapNotFoundException:
             If no wrap can be found, either as a subproject or as a wrap file
         :return: A path to the root file, depending on the method as well as the
@@ -444,14 +447,14 @@ class Resolver:
         self.wrap = self.wraps.get(packagename)
         if self.wrap and self.wrap.has_wrap:
             method = self.wrap.values.get('method', method)
-            if method == 'cargo' and not cargo_projects:
-                cargo_projects |= load_all_manifests(Path(self.wrap.filename).parent)
+            if method == 'cargo' and not self.cargo_subprojects:
+                self.cargo_subprojects |= load_all_manifests(Path(self.wrap.filename).parent)
 
         existing_cargo_subproject = False
         if method == 'cargo':
-            if cargo_projects and packagename in cargo_projects:
+            if self.cargo_subprojects and packagename in self.cargo_subprojects:
                 existing_cargo_subproject = True
-                prog = cargo_projects[packagename]
+                prog = self.cargo_subprojects[packagename]
                 self.directory = os.path.join(prog.subdir, prog.path)
                 self.dirname = self.directory
                 self.wrap = None
@@ -531,13 +534,18 @@ class Resolver:
                 raise
 
         if method == 'cargo' and not existing_cargo_subproject:
-            cargo_projects |= load_all_manifests(Path(self.dirname).parent)
+            self.cargo_subprojects |= load_all_manifests(Path(self.dirname).parent)
 
             # Recurse now that we downloaded the subproject and updated our list
             # of manifests
-            return (self.resolve(packagename, method, cargo_projects), method)
+            return self.resolve(packagename, method)
 
         if not os.path.exists(buildfile):
+            if self.cargo_subprojects and packagename in self.cargo_subprojects:
+                m = f'No {os.path.basename(buildfile)} file found in subproject {packagename!r} but it is a cargo subproject, trying it'
+                mlog.log(m)
+                return self.resolve(packagename, 'cargo')
+
             raise WrapException(f'Subproject exists but has no {os.path.basename(buildfile)} file')
 
         # At this point, the subproject has been successfully resolved for the

@@ -309,7 +309,6 @@ class Interpreter(InterpreterBase, HoldableObject):
         self.subprojects: T.Dict[str, SubprojectHolder] = {}
         self.subproject_stack: T.List[str] = []
         self.configure_file_outputs: T.Dict[str, int] = {}
-        self.cargo_subprojects: T.Dict[str, Manifest] = {}
         # Passed from the outside, only used in subprojects.
         if default_project_options:
             self.default_project_options = default_project_options.copy()
@@ -924,7 +923,7 @@ class Interpreter(InterpreterBase, HoldableObject):
 
         r = self.environment.wrap_resolver
         try:
-            (subdir, method) = r.resolve(subp_name, method, self.cargo_subprojects)
+            (subdir, method) = r.resolve(subp_name, method)
         except wrap.WrapException as e:
             if not required:
                 mlog.log(e)
@@ -1084,7 +1083,7 @@ class Interpreter(InterpreterBase, HoldableObject):
             else:
                 crate_name = subp_name
 
-            ast = interpret(self.cargo_subprojects[crate_name], self.environment)
+            ast = interpret(self.environment.wrap_resolver.cargo_subprojects[crate_name], self.environment)
             mlog.log()
             with mlog.nested('cargo-ast'):
                 mlog.log('Processing generated meson AST')

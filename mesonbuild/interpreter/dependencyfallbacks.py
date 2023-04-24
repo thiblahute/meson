@@ -30,6 +30,7 @@ class DependencyFallbacksHolder(MesonInterpreterObject):
         self.allow_fallback = allow_fallback
         self.subproject_name: T.Optional[str] = None
         self.subproject_varname: T.Optional[str] = None
+        self.method: str = 'meson'
         self.subproject_kwargs = {'default_options': default_options or []}
         self.names: T.List[str] = []
         self.forcefallback: bool = False
@@ -65,10 +66,11 @@ class DependencyFallbacksHolder(MesonInterpreterObject):
             raise InterpreterException('Fallback info must have one or two items.')
         self._subproject_impl(subp_name, varname)
 
-    def _subproject_impl(self, subp_name: str, varname: str) -> None:
+    def _subproject_impl(self, subp_name: str, varname: str, method: str = 'meson') -> None:
         assert self.subproject_name is None
         self.subproject_name = subp_name
         self.subproject_varname = varname
+        self.method = method
 
     def _do_dependency_cache(self, kwargs: TYPE_nkwargs, func_args: TYPE_nvar, func_kwargs: TYPE_nkwargs) -> T.Optional[Dependency]:
         name = func_args[0]
@@ -125,10 +127,11 @@ class DependencyFallbacksHolder(MesonInterpreterObject):
         # Configure the subproject
         subp_name = self.subproject_name
         varname = self.subproject_varname
+        method = self.method
         func_kwargs.setdefault('version', [])
         if 'default_options' in kwargs and isinstance(kwargs['default_options'], str):
             func_kwargs['default_options'] = listify(kwargs['default_options'])
-        self.interpreter.do_subproject(subp_name, 'meson', func_kwargs)
+        self.interpreter.do_subproject(subp_name, method, func_kwargs)
         return self._get_subproject_dep(subp_name, varname, kwargs)
 
     def _get_subproject(self, subp_name: str) -> T.Optional[SubprojectHolder]:
@@ -332,11 +335,11 @@ class DependencyFallbacksHolder(MesonInterpreterObject):
         # manually using cc.find_library() for example.
         if not self.subproject_name and self.allow_fallback is not False:
             for name in self.names:
-                subp_name, varname = self.wrap_resolver.find_dep_provider(name)
+                subp_name, varname, method = self.wrap_resolver.find_dep_provider(name)
                 if subp_name:
                     self.forcefallback |= subp_name in force_fallback_for
                     if self.forcefallback or self.allow_fallback is True or required or self._get_subproject(subp_name):
-                        self._subproject_impl(subp_name, varname)
+                        self._subproject_impl(subp_name, varname, method)
                     break
 
         candidates = self._get_candidates()
