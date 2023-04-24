@@ -455,6 +455,7 @@ def interpret(cargo: Manifest, env: Environment) -> mparser.CodeBlockNode:
         for name, dep in cargo.dependencies.items():
             kw = {
                 'version': build.array([build.string(s) for s in dep.version]),
+                'required': build.bool(not dep.optional),
             }
             ast.extend([
                 build.assign(
