@@ -389,7 +389,8 @@ def _create_lib(cargo: Manifest, build: builder.Builder, env: Environment) -> T.
     depmap = {}
     if cargo.dependencies:
         for name, dependency in cargo.dependencies.items():
-            dependencies += [build.function('dependency', pos=[build.string(_lookup_dependency_name(name, env.wrap_resolver.wrap))]) ]
+            dependencies += [build.identifier(f'dep_{fixup_meson_varname(name)}')]
+
             if name != dependency.package and dependency.package:
                 depmap[dependency.package.replace('-', '_')] = name
     dependency_map = {}
@@ -457,9 +458,8 @@ def interpret(cargo: Manifest, env: Environment) -> mparser.CodeBlockNode:
             }
             ast.extend([
                 build.assign(
-                    build.method(
-                        'cargo',
-                        build.identifier('rust'),
+                    build.function(
+                        'dependency',
                         [build.string(_lookup_dependency_name(name, env.wrap_resolver.wrap))],
                         kw,
                     ),
