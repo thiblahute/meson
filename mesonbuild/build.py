@@ -1076,7 +1076,18 @@ class BuildTarget(Target):
         return ExtractedObjects(self, obj_src, obj_gen)
 
     def extract_all_objects(self, recursive: bool = True) -> ExtractedObjects:
-        return ExtractedObjects(self, self.sources, self.generated, self.objects,
+        objects = self.objects.copy()
+        sources = self.sources.copy()
+        generated = self.generated.copy()
+        if recursive:
+            for target in self.link_targets:
+                if isinstance(target, StaticLibrary):
+                    target_obj = target.extract_all_objects(recursive=recursive)
+                    objects.append(target_obj)
+            for target in self.link_whole_targets:
+                target_obj = target.extract_all_objects(recursive=recursive)
+                objects.append(target_obj)
+        return ExtractedObjects(self, sources, generated, objects,
                                 recursive, pch=True)
 
     def get_all_link_deps(self) -> ImmutableListProtocol[BuildTargetTypes]:
@@ -2731,7 +2742,7 @@ class CustomTarget(Target, CustomTargetBase, CommandBase):
             return False
         return CustomTargetIndex(self, self.outputs[0]).is_internal()
 
-    def extract_all_objects(self) -> T.List[T.Union[str, 'ExtractedObjects']]:
+    def extract_all_objects(self, _recursive: bool = False) -> T.List[T.Union[str, 'ExtractedObjects']]:
         return self.get_outputs()
 
     def type_suffix(self):
@@ -3001,8 +3012,8 @@ class CustomTargetIndex(CustomTargetBase, HoldableObject):
         suf = os.path.splitext(self.output)[-1]
         return suf in {'.a', '.lib'} and not self.should_install()
 
-    def extract_all_objects(self) -> T.List[T.Union[str, 'ExtractedObjects']]:
-        return self.target.extract_all_objects()
+    def extract_all_objects(self, recursive: bool = False) -> T.List[T.Union[str, 'ExtractedObjects']]:
+        return self.target.extract_all_objects(recursive)
 
     def get_custom_install_dir(self) -> T.List[T.Union[str, Literal[False]]]:
         return self.target.get_custom_install_dir()
