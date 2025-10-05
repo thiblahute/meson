@@ -1,0 +1,19 @@
+# Meson development environment script for Nushell
+
+# Check if already in a Meson devenv
+if ($env.MESON_DEVENV_ACTIVE? != null) {{
+    error make {{msg: $"ERROR: Already in Meson devenv '($env.MESON_DEVENV_ACTIVE)'. Please run 'devenvexit' first."}}
+}}
+
+export-env {{
+{export_vars_nu}
+
+    load-env $old_meson_vars
+    load-env $meson_vars
+}}
+
+export def --env devenvexit [] {{
+{restore_vars_nu}
+}}
+
+# Note: In Nushell, use 'overlay hide devenv' to exit instead of devenvexit

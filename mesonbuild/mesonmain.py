@@ -11,6 +11,7 @@ sys.modules['pathlib'] = _pathlib
 
 # This file is an entry point for all commands, including scripts. Include the
 # strict minimum python modules for performance reasons.
+import os
 import os.path
 import platform
 import importlib
@@ -19,6 +20,38 @@ import typing as T
 
 from .utils.core import MesonException, MesonBugException
 from . import mlog
+
+# Prefix used for backing up environment variables in devenv scripts
+DEVENV_BACKUP_PREFIX = '_OLD_MESON_'
+
+def restore_devenv_environment() -> None:
+    """
+    Restore the original environment when running inside a Meson devenv.
+
+    This function looks for _OLD_MESON_* environment variables (set by devenv
+    activation scripts) and restores the original values. This is necessary
+    because devenv modifies variables like PATH, PKG_CONFIG_PATH, etc. to use
+    built artifacts, which can interfere with the build process itself.
+    """
+    for key in list(os.environ.keys()):
+        if key.startswith(DEVENV_BACKUP_PREFIX):
+            original_key = key[len(DEVENV_BACKUP_PREFIX):]
+            old_value = os.environ[key]
+            if old_value == "__NOT__SET__":
+                # Variable was not set originally, so unset it
+                os.environ.pop(original_key, None)
+            else:
+                # Restore the original value
+                os.environ[original_key] = old_value
+
+            # Remove the _OLD_MESON_* variable
+            del os.environ[key]
+
+    # Also remove devenv marker variables
+    os.environ.pop('MESON_DEVENV', None)
+    os.environ.pop('MESON_DEVENV_ACTIVE', None)
+    os.environ.pop('MESON_DEVENV_BUILDDIR', None)
+    os.environ.pop('MESON_PROJECT_NAME', None)
 
 def errorhandler(e: Exception, command: str) -> int:
     import traceback
@@ -182,6 +215,25 @@ class CommandLineParser:
 
         if command is None:
             command = options.command
+
+        # Restore original environment if running inside a devenv for build commands
+        # on the same build directory. These commands invoke build tools or scripts
+        # that should run in the original system environment, not the modified devenv.
+        devenv_builddir = os.environ.get('MESON_DEVENV_BUILDDIR')
+        if devenv_builddir:
+            build_commands = {'compile', 'test', 'install', 'dist', 'setup', 'configure'}
+            if command in build_commands:
+                # Different commands use different attribute names for the build directory
+                current_builddir = getattr(options, 'builddir', None) or getattr(options, 'wd', None)
+                if current_builddir:
+                    # Resolve both paths to compare
+                    devenv_path = os.path.abspath(os.path.realpath(devenv_builddir))
+                    current_path = os.path.abspath(os.path.realpath(current_builddir))
+
+                    if devenv_path == current_path:
+                        mlog.log(mlog.green('INFO:'), 'detected Meson devenv for this project, restoring original environment for build')
+                        restore_devenv_environment()
+                    # else: Different build directory, keep devenv active
 
         # Bump the version here in order to add a pre-exit warning that we are phasing out
         # support for old python. If this is already the oldest supported version, then

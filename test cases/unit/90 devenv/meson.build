@@ -23,3 +23,26 @@ meson.add_devenv(env)
 
 # Reproducer for https://github.com/mesonbuild/meson/issues/12032
 pkgconf = import('pkgconfig')
+
+# Add a custom target that fails if run inside devenv
+# This tests that meson compile restores the environment before running
+check_not_in_devenv = custom_target(
+  'check_not_in_devenv',
+  output: 'devenv_check.txt',
+  command: [
+    find_program('python3'),
+    '-c',
+    '''import os, sys
+if os.environ.get("MESON_DEVENV") == "1":
+    print("ERROR: Build is running inside devenv! Environment was not restored.", file=sys.stderr)
+    sys.exit(1)
+if "_OLD_MESON_PATH" in os.environ:
+    print("ERROR: _OLD_MESON_PATH still present! Environment was not restored.", file=sys.stderr)
+    sys.exit(1)
+with open(sys.argv[1], "w") as f:
+    f.write("Build environment correctly restored\\n")
+''',
+    '@OUTPUT@'
+  ],
+  build_by_default: true
+)

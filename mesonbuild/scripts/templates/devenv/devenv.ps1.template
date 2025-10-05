@@ -1,0 +1,43 @@
+# Meson development environment script for PowerShell
+
+function global:devenvexit([switch] $NonDestructive) {{
+{restore_vars_ps1}
+
+    if (Test-Path function:_old_meson_prompt) {{
+        $function:prompt = $function:_old_meson_prompt
+        Remove-Item function:_old_meson_prompt
+    }}
+
+    if ($env:MESON_DEVENV_ACTIVE) {{
+        Remove-Item env:MESON_DEVENV_ACTIVE -ErrorAction SilentlyContinue
+    }}
+
+    if ($env:MESON_DEVENV_BUILDDIR) {{
+        Remove-Item env:MESON_DEVENV_BUILDDIR -ErrorAction SilentlyContinue
+    }}
+
+    if (!$NonDestructive) {{
+        Remove-Item function:devenvexit
+    }}
+}}
+
+# Check if already in a Meson devenv
+if ($env:MESON_DEVENV_ACTIVE) {{
+    Write-Error "ERROR: Already in Meson devenv '$env:MESON_DEVENV_ACTIVE'. Please run 'devenvexit' first."
+    return
+}}
+
+{export_vars_ps1}
+
+$env:MESON_DEVENV_ACTIVE = "{project_name}"
+$env:MESON_DEVENV_BUILDDIR = "{builddir}"
+
+function global:_old_meson_prompt {{
+    ""
+}}
+$function:_old_meson_prompt = $function:prompt
+
+function global:prompt {{
+    $previous_prompt_value = & $function:_old_meson_prompt
+    ("[{project_name}] " + $previous_prompt_value)
+}}

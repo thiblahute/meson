@@ -1,0 +1,42 @@
+# Meson development environment script for Fish
+
+function devenvexit -d "Exit Meson development environment"
+{restore_vars_fish}
+
+    if functions -q _old_meson_fish_prompt
+        functions -e fish_prompt
+        functions -c _old_meson_fish_prompt fish_prompt
+        functions -e _old_meson_fish_prompt
+    end
+
+    if set -q MESON_DEVENV_ACTIVE
+        set -e MESON_DEVENV_ACTIVE
+    end
+
+    if set -q MESON_DEVENV_BUILDDIR
+        set -e MESON_DEVENV_BUILDDIR
+    end
+
+    if test "$argv[1]" != "nondestructive"
+        functions -e devenvexit
+    end
+end
+
+# Check if already in a Meson devenv
+if set -q MESON_DEVENV_ACTIVE
+    echo "ERROR: Already in Meson devenv '$MESON_DEVENV_ACTIVE'. Please run 'devenvexit' first." >&2
+    return 1
+end
+
+{export_vars_fish}
+
+set -gx MESON_DEVENV_ACTIVE "{project_name}"
+set -gx MESON_DEVENV_BUILDDIR "{builddir}"
+
+if not set -q MESON_DEVENV_DISABLE_PROMPT
+    functions -c fish_prompt _old_meson_fish_prompt
+    function fish_prompt
+        printf "[{project_name}] "
+        _old_meson_fish_prompt
+    end
+end

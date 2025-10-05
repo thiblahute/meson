@@ -4669,9 +4669,51 @@ class AllPlatformTests(BasePlatformTests):
         self.assertIn(f'TEST_C="{expected}"', o)
         self.assertIn('export TEST_C', o)
 
+        # Test that devenv scripts were automatically generated during setup
+        # Scripts are now generated at the end of meson setup, not via --dump
+        for script_name in ['devenv', 'devenv.fish', 'devenv.ps1', 'devenv.nu']:
+            script_path = os.path.join(self.builddir, script_name)
+            self.assertTrue(os.path.exists(script_path), f'{script_name} was not created')
+            content = Path(script_path).read_text(encoding='utf-8')
+            self.assertIn('devenvexit', content)
+            self.assertIn('MESON_DEVENV', content)
+
+        # Test individual script content
+        sh_script = os.path.join(self.builddir, 'devenv')
+        content = Path(sh_script).read_text(encoding='utf-8')
+        self.assertIn('devenvexit', content)
+        self.assertIn('_OLD_MESON_', content)
+
+        fish_script = os.path.join(self.builddir, 'devenv.fish')
+        content = Path(fish_script).read_text(encoding='utf-8')
+        self.assertIn('devenvexit', content)
+        self.assertIn('set -gx', content)
+
         cmd = self.meson_command + ['devenv', '-C', self.builddir] + python_command + ['-c', 'import sys; sys.exit(42)']
         result = subprocess.run(cmd, encoding='utf-8')
         self.assertEqual(result.returncode, 42)
+
+        # Test that meson restores environment when running compile from inside devenv
+        # Source the devenv script and run meson compile
+        # The custom target in meson.build will fail if environment is not restored
+        devenv_script = os.path.join(self.builddir, 'devenv')
+        meson_cmd = ' '.join(self.meson_command)
+        test_script = f'''
+source {devenv_script}
+# Verify we're in devenv (MESON_DEVENV should be set)
+if [ "$MESON_DEVENV" != "1" ]; then
+    echo "FAILED: MESON_DEVENV not set after sourcing" >&2
+    exit 1
+fi
+# Run meson compile (should restore environment internally)
+# The build includes a custom target that checks environment was restored
+{meson_cmd} compile -C {self.builddir}
+'''
+        result = subprocess.run(['bash', '-c', test_script], capture_output=True, encoding='utf-8')
+        if result.returncode != 0:
+            print("STDOUT:", result.stdout)
+            print("STDERR:", result.stderr)
+        self.assertEqual(result.returncode, 0, 'Devenv environment restoration test failed')
 
     def test_clang_format_check(self):
         if self.backend is not Backend.ninja:

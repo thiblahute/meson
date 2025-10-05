@@ -423,6 +423,29 @@ format should be used. There are currently 3 formats supported:
 - `vscode`: Same as `sh` but without `$VAR` substitution because they do not
   seems to be properly supported by vscode.
 
+#### Sourceable Shell Activation Scripts
+
+*Since 1.X.0* When a project uses `meson.add_devenv()`, sourceable shell activation
+scripts (similar to Python's virtualenv) are automatically generated during `meson setup`
+in the build directory:
+- `devenv`: Bash/Zsh activation script
+- `devenv.fish`: Fish activation script
+- `devenv.ps1`: PowerShell activation script
+- `devenv.nu`: Nushell activation script
+
+These scripts are only generated if the project has called `meson.add_devenv()` at
+least once. They can be sourced to modify the current shell environment instead of
+spawning a subshell. Each script provides a `devenvexit` function (or `overlay hide devenv`
+for Nushell) to restore the original environment.
+
+When running Meson build commands (`compile`, `test`, `install`, `dist`, `setup`, `configure`)
+from within a devenv, Meson automatically detects if the command is operating on the same
+build directory as the active devenv. If so, it temporarily restores the original environment
+for that command. This ensures the devenv's modified environment (which points to built artifacts)
+doesn't interfere with the build process itself - build tools need to run in the clean system
+environment. When running build commands on a different project, the devenv remains active,
+allowing you to use its modified environment for that other project.
+
 {{ devenv_arguments.inc }}
 
 

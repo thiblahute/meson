@@ -313,6 +313,13 @@ class MesonApp:
                              'Please consider using `meson devenv` instead. See https://github.com/mesonbuild/meson/pull/9243 '
                              'for details.')
 
+            # Generate devenv activation scripts
+            try:
+                from . import mdevenv
+                mdevenv.generate_devenv_scripts(b, self.build_dir)
+            except Exception as e:
+                mlog.warning(f'Failed to generate devenv scripts: {e}')
+
             if self.options.profile:
                 fname = os.path.join(self.build_dir, 'meson-logs', 'profile-startup-modules.json')
                 mods = set(sys.modules.keys())
